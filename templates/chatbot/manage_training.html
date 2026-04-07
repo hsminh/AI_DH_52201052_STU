@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Management - Admin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; padding: 40px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { margin-bottom: 30px; color: #1a73e8; border-bottom: 2px solid #f1f3f4; padding-bottom: 10px; }
+        
+        .section { margin-bottom: 40px; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        h2 { font-size: 1.25rem; margin-bottom: 20px; color: #444; }
+        
+        /* Form Styles */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9rem; }
+        input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; }
+        button { background: #1a73e8; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #1558b0; }
+        
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-size: 0.9rem; }
+        td { font-size: 0.9rem; }
+        
+        .nav-link { display: inline-block; margin-bottom: 20px; color: #1a73e8; text-decoration: none; font-weight: bold; }
+        .nav-link:hover { text-decoration: underline; }
+        
+        #statusMsg { margin-top: 10px; font-weight: bold; font-size: 0.9rem; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <a href="{% url 'chatbot' %}" class="nav-link">&larr; Back to Chat</a>
+    <h1>Training Management Center</h1>
+
+    <!-- Part 1: Document Types -->
+    <div class="section">
+        <h2>1. Document Types (Categories)</h2>
+        <div class="form-group">
+            <label>Type Name (e.g., Study, Love, Sales)</label>
+            <input type="text" id="typeName" placeholder="Enter type name...">
+        </div>
+        <div class="form-group">
+            <label>Description (Optional)</label>
+            <textarea id="typeDesc" rows="2" placeholder="Describe this category..."></textarea>
+        </div>
+        <button onclick="createType()">Create New Type</button>
+        <div id="typeStatus"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody id="typeTableBody">
+                {% for type in document_types %}
+                    <tr>
+                        <td>{{ type.id }}</td>
+                        <td>{{ type.name }}</td>
+                        <td>{{ type.description }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Part 2: Upload Training Documents -->
+    <div class="section">
+        <h2>2. Upload Training Documents</h2>
+        <div class="form-group">
+            <label>Select Category</label>
+            <select id="uploadType">
+                <option value="">-- Choose Category --</option>
+                {% for type in document_types %}
+                    <option value="{{ type.id }}">{{ type.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Training File (PDF or Text)</label>
+            <input type="file" id="fileInput">
+        </div>
+        <button onclick="uploadDoc()">Upload & Train Assistant</button>
+        <div id="uploadStatus"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Category</th>
+                    <th>Uploaded At</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="docTableBody">
+                {% for doc in documents %}
+                    <tr>
+                        <td>{{ doc.file.name }}</td>
+                        <td>{{ doc.document_type.name }}</td>
+                        <td>{{ doc.uploaded_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            <button onclick="deleteDoc({{ doc.id }})" style="background: #dc3545; padding: 5px 10px; font-size: 0.8rem;">Delete</button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function createType() {
+        const name = document.getElementById("typeName").value.trim();
+        const desc = document.getElementById("typeDesc").value.trim();
+        const status = document.getElementById("typeStatus");
+
+        if (!name) return alert("Please enter a name");
+
+        try {
+            const res = await fetch("{% url 'create_document_type' %}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: name, description: desc })
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                location.reload();
+            } else {
+                status.className = "error";
+                status.textContent = data.message;
+            }
+        } catch (err) {
+            alert("Error creating type");
+        }
+    }
+
+    async function uploadDoc() {
+        const fileInput = document.getElementById("fileInput");
+        const typeSelect = document.getElementById("uploadType");
+        const status = document.getElementById("uploadStatus");
+        
+        const file = fileInput.files[0];
+        const typeId = typeSelect.value;
+
+        if (!file || !typeId) return alert("Please select both a file and a category");
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type_id", typeId);
+
+        status.className = "";
+        status.textContent = "Processing training data... please wait.";
+
+        try {
+            const res = await fetch("{% url 'upload_document' %}", {
+                method: "POST",
+                body: formData
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                location.reload();
+            } else {
+                status.className = "error";
+                status.textContent = data.message;
+            }
+        } catch (err) {
+            status.className = "error";
+            status.textContent = "Upload failed.";
+        }
+    }
+
+    async function deleteDoc(docId) {
+        if (!confirm("Are you sure you want to delete this document and its training data?")) return;
+
+        try {
+            const res = await fetch(`/chat/delete-doc/${docId}/`, {
+                method: "POST"
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        } catch (err) {
+            alert("Failed to delete document.");
+        }
+    }
+</script>
+
+</body>
+</html>
