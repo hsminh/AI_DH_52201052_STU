@@ -201,63 +201,138 @@ export default function FitnessPage() {
     setLoading(false);
   };
 
-  const processStream = (text: string) => {
-    console.log('processStream called with text length:', text.length);
-    console.log('processStream text preview:', text.substring(0, 200) + '...');
+const processStream = (text: string) => {
+  console.log('Raw response:', text);
+
+  // 1. Extract PROFILE
+  const profileMatch = text.match(/\[PROFILE_DATA\]([\s\S]*?)\[\/PROFILE_DATA\]/);
+  if (profileMatch) {
+    try {
+      const parsedProfile = JSON.parse(profileMatch[1]);
+      setProfile(parsedProfile);
+    } catch (e) {
+      console.error('Profile parse error:', e);
+    }
+  }
+
+  // 2. Extract JSON sạch (IMPORTANT FIX)
+  const jsonMatch = text.match(/```json([\s\S]*?)```/);
+
+  if (!jsonMatch) {
+    console.warn('No JSON block found');
+    return;
+  }
+
+  try {
+    const jsonData = JSON.parse(jsonMatch[1]);
+    console.log('Parsed JSON:', jsonData);
+
+    updateUI(jsonData);
+    setLoading(false);
+
+  } catch (err) {
+    console.error('JSON parse error:', err);
+  }
+};
+
+  // Helper function to update UI progressively
+const updateUI = (data: any) => {
+  // ===== NUTRITION =====
+  if (data.consumed) {
+    let totalCalories = 0;
+    let protein = 0;
+    let carbs = 0;
+    let fat = 0;
+
+    Object.values(data.consumed).forEach((meal: any) => {
+      totalCalories += meal.calories || 0;
+      protein += meal.protein || 0;
+      carbs += meal.carbs || 0;
+      fat += meal.fat || 0;
+    });
+
+    setNutrition({
+      calories: totalCalories,
+      protein,
+      carbs,
+      fat
+    });
+  }
+
+  // ===== ANALYSIS TEXT =====
+  let analysisText = `
+**Chế độ:** ${data.mode}
+**Mục tiêu:** ${data.daily_target} kcal
+**Trạng thái:** ${data.status}
+**Tóm tắt:** ${data.summary}
+`;
+
+  if (data.consumed) {
+    const mealMap: any = {
+      breakfast: 'Sáng',
+      lunch: 'Trưa',
+      snack: 'Phụ',
+      dinner: 'Tối'
+    };
+
+    Object.entries(data.consumed).forEach(([key, meal]: any) => {
+      analysisText += `
+
+**${mealMap[key]}:** ${meal.calories} kcal  
+(P:${meal.protein}g - C:${meal.carbs}g - F:${meal.fat}g)
+
+_${meal.suggestion || ''}_`;
+    });
+  }
+
+  setAnalysis(analysisText);
+
+  // ===== RECOMMENDATION =====
+  const recs: string[] = [];
+  Object.entries(data.consumed || {}).forEach(([key, meal]: any) => {
+    if (meal.calories === 0 && meal.suggestion) {
+      recs.push(`**${key}:** ${meal.suggestion}`);
+    }
+  });
+
+  setRecommendation(recs.join('\n\n'));
+
+  // ===== EXERCISE =====
+  if (data.activity_recommendation) {
+    const act = data.activity_recommendation;
+
+    setExercise(`
+**Loại:** ${act.type}  
+**Cường độ:** ${act.intensity}
+
+**Bài tập:**  
+${act.content?.join('\n')}
+
+**Coach:**  
+${act.coach_advice}
+`);
+  }
+};
+  // Helper function to parse and update incrementally
+  const parseAndUpdateIncrementally = (text: string) => {
+    // Look for specific patterns and update as they appear
+    const patterns = [
+      { key: 'mode', pattern: /"mode":\s*"([^"]+)"/ },
+      { key: 'daily_target', pattern: /"daily_target":\s*(\d+)/ },
+      { key: 'calories_burned', pattern: /"calories_burned":\s*(\d+)/ },
+      { key: 'net_calories', pattern: /"net_calories":\s*(\d+)/ },
+      { key: 'status', pattern: /"status":\s*"([^"]+)"/ },
+      { key: 'summary', pattern: /"summary":\s*"([^"]+)"/ }
+    ];
     
-    // Check for error messages first
-    const errorMatch = text.match(/\[ERROR\](.*?)\[\/ERROR\]/);
-    if (errorMatch) {
-      console.error('Backend error:', errorMatch[1]);
-      setAnalysis(`**Lô~i:** ${errorMatch[1]}`);
-      setLoading(false);
-      return;
-    }
-    
-    // 1. Profile Data
-    const profileMatch = text.match(/\[PROFILE_DATA\](.*?)\[\/PROFILE_DATA\]/);
-    if (profileMatch) {
-      console.log('Found profile data:', profileMatch[1]);
-      setProfile(JSON.parse(profileMatch[1]));
-    }
-
-    // 2. Nutrition
-    const nutritionMatch = text.match(/\[NUTRITION_START\]([\s\S]*?)\[NUTRITION_END\]/);
-    if (nutritionMatch) {
-      console.log('Found nutrition data:', nutritionMatch[1]);
-      const lines = nutritionMatch[1].trim().split('\n');
-      const nutObj: any = {};
-      lines.forEach(l => {
-        const [k, v] = l.split(':');
-        if (k && v) {
-          const key = k.trim().toLowerCase();
-          const value = v.trim().replace('kcal', '').replace('g', '').trim();
-          nutObj[key] = parseInt(value) || 0;
-        }
-      });
-      setNutrition(nutObj);
-    }
-
-    // 3. Analysis
-    const analysisMatch = text.match(/\[ANALYSIS_START\]([\s\S]*?)(\[ANALYSIS_END\]|$)/);
-    if (analysisMatch) {
-      console.log('Found analysis data, length:', analysisMatch[1].length);
-      setAnalysis(analysisMatch[1].trim());
-    }
-
-    // 4. Recommendation
-    const recommendMatch = text.match(/\[RECOMMEND_START\]([\s\S]*?)(\[RECOMMEND_END\]|$)/);
-    if (recommendMatch) {
-      console.log('Found recommendation data, length:', recommendMatch[1].length);
-      setRecommendation(recommendMatch[1].trim());
-    }
-
-    // 5. Exercise
-    const exerciseMatch = text.match(/\[EXERCISE_START\]([\s\S]*?)(\[EXERCISE_END\]|$)/);
-    if (exerciseMatch) {
-      console.log('Found exercise data, length:', exerciseMatch[1].length);
-      setExercise(exerciseMatch[1].trim());
-    }
+    patterns.forEach(({ key, pattern }) => {
+      const match = text.match(pattern);
+      if (match) {
+        const value = match[1];
+        const partialData = { [key]: value };
+        updateUI(partialData);
+      }
+    });
   };
 
   const chartData = nutrition ? {
@@ -361,7 +436,7 @@ export default function FitnessPage() {
 
             <Button
               onClick={startAnalysis}
-              disabled={loading || (!input.trim() && !image)}
+              disabled={loading}
               className="w-full bg-green-600 hover:bg-green-700"
               size="lg"
             >

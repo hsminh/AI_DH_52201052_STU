@@ -9,11 +9,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from PIL import Image
 import google.genai as genai
 from google.genai.errors import ServerError, APIError
-from apps.accounts.models import ConsumerProfile
 from .services import FitnessService
-# Assuming we move prompts and RAG logic to a shared core or chatbot module
-# For now, I'll import from the original location or move them
-from apps.chatbot_core.prompts import get_fitness_analyst_prompt
+from apps.chatbot_core.prompts import get_meal_tracking_prompt
 from apps.chatbot_core.services import RAGService
 
 class FitnessAnalysisView(APIView):
@@ -56,9 +53,9 @@ class FitnessAnalysisView(APIView):
                 "details": "Please update your profile with valid height, weight, and age information."
             }, status=400)
 
-        context_query = user_input if user_input else "calories and nutrition facts"
-        context = RAGService.get_relevant_context(context_query)
-        prompt = get_fitness_analyst_prompt(user_input, context=context, body_metrics=body_metrics)
+        # Use meal tracking prompt with user input, body metrics, and workout data
+        # For now, we'll pass None for workout_data, but this can be extended later
+        prompt = get_meal_tracking_prompt(user_input, body_metrics, workout_data=None)
 
         def generate_response_with_retry(client, model, contents, max_retries=3):
             """Generate response with exponential backoff retry logic"""
@@ -90,8 +87,8 @@ class FitnessAnalysisView(APIView):
             
             # Model list with fallbacks
             MODELS = [
-                "gemini-3-flash-preview",  # Primary model
-                # "gemini-3.1-pro-preview",        # Fallback 1
+                "gemini-3.1-flash-lite-preview",  # Primary model
+                "gemini-3.1-pro-preview",        # Fallback 1
                 # "gemini-1.5-pro",          # Fallback 2
             ]
             
