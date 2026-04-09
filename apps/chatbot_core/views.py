@@ -17,7 +17,10 @@ class ChatView(APIView):
             return JsonResponse({"error": "No input provided"}, status=400)
 
         context = RAGService.get_relevant_context(user_input)
-        prompt = f"Ngữ cảnh từ tài liệu huấn luyện:\n{context}\n\nNgười dùng hỏi: {user_input}\n\nHãy trả lời dựa trên ngữ cảnh trên."
+        if context.strip():
+            prompt = f"Ngữ cảnh từ tài liệu hu�xBA�n luyện:\n{context}\n\nNgười dùng hỏi: {user_input}\n\nHãy trả lời dựa trẻn ngữ cảnh trên."
+        else:
+            prompt = f"Người dùng hỏi: {user_input}\n\nHãy trả lời câu hỏi này một cách chung chung, vì chưa có tài liệu nào được tải lên."
 
         try:
             client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])

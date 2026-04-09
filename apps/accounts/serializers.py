@@ -6,6 +6,13 @@ class ConsumerProfileSerializer(serializers.ModelSerializer):
         model = ConsumerProfile
         fields = ['weight', 'height', 'age', 'gender', 'activity_level', 'body_type', 'health_condition']
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    profile = ConsumerProfileSerializer()
+    
+    class Meta:
+        model = Account
+        fields = ['id', 'username', 'email', 'role', 'profile']
+
 class AccountSerializer(serializers.ModelSerializer):
     profile = ConsumerProfileSerializer(required=False)
     password = serializers.CharField(write_only=True)

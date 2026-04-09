@@ -37,12 +37,12 @@ export default function DocumentsPage() {
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !selectedType) return;
+    if (!selectedFile) return;
 
     setUploading(true);
     const formData = new FormData();
     formData.append('file', selectedFile);
-    formData.append('document_type', selectedType.toString());
+    if (selectedType) formData.append('document_type', selectedType.toString());
     if (description) formData.append('description', description);
 
     try {
@@ -114,12 +114,13 @@ export default function DocumentsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-600">Document Type</label>
+                <label className="text-sm font-medium text-slate-600">Document Type (Optional)</label>
                 <select 
                   value={selectedType}
                   onChange={(e) => setSelectedType(Number(e.target.value))}
                   className="w-full p-2 border border-slate-200 rounded-lg text-sm"
                 >
+                  <option value={0}>No Type</option>
                   {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>

@@ -1,6 +1,14 @@
 class FitnessService:
     @staticmethod
     def calculate_metrics(weight_kg, height_cm, age, gender, activity_level, body_type="", health_condition=""):
+        # Validate inputs to prevent division by zero
+        if height_cm <= 0:
+            raise ValueError("Height must be greater than 0")
+        if weight_kg <= 0:
+            raise ValueError("Weight must be greater than 0")
+        if age <= 0:
+            raise ValueError("Age must be greater than 0")
+        
         # BMI
         height_m = height_cm / 100
         bmi = round(weight_kg / (height_m ** 2), 1)

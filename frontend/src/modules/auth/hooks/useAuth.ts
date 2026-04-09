@@ -13,7 +13,14 @@ export const useAuth = (requiredRole?: AccountRole) => {
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
       if (!token) {
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-            router.push('/login');
+            // Redirect to appropriate login page based on required role
+            if (requiredRole === 'CONSUMER') {
+                router.push('/consumer/login');
+            } else if (requiredRole === 'USER') {
+                router.push('/user/login');
+            } else {
+                router.push('/login');
+            }
         }
         setLoading(false);
         return;
@@ -22,14 +29,30 @@ export const useAuth = (requiredRole?: AccountRole) => {
       try {
         const profile = await AuthApi.getProfile();
         if (requiredRole && profile.role !== requiredRole) {
-           router.push('/login');
+           // Redirect to appropriate login page for the required role
+           if (requiredRole === 'CONSUMER') {
+               router.push('/consumer/login');
+           } else if (requiredRole === 'USER') {
+               router.push('/user/login');
+           } else {
+               router.push('/login');
+           }
            return;
         }
         setUser(profile);
       } catch (err) {
+        console.error('Auth check failed:', err);
         if (typeof window !== 'undefined') {
             localStorage.removeItem('access_token');
-            router.push('/login');
+            localStorage.removeItem('refresh_token');
+            // Redirect to appropriate login page based on required role
+            if (requiredRole === 'CONSUMER') {
+                router.push('/consumer/login');
+            } else if (requiredRole === 'USER') {
+                router.push('/user/login');
+            } else {
+                router.push('/login');
+            }
         }
       } finally {
         setLoading(false);

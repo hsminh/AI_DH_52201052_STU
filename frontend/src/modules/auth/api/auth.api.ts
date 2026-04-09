@@ -13,6 +13,26 @@ export class AuthApi extends AbstractApiClient {
     return response;
   }
 
+  static async userLogin(data: LoginRequest): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>('/accounts/user/login/', {
+      method: 'POST',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    this.setToken(response.access, response.refresh);
+    return response;
+  }
+
+  static async consumerLogin(data: LoginRequest): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>('/accounts/consumer/login/', {
+      method: 'POST',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    this.setToken(response.access, response.refresh);
+    return response;
+  }
+
   static async register(data: RegisterRequest): Promise<User> {
     return this.request('/accounts/register/', {
       method: 'POST',

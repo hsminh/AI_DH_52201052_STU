@@ -28,6 +28,11 @@ urlpatterns = [
     path('api/documents/', include('apps.documents.urls')),
     path('api/fitness/', include('apps.fitness.urls')),
     path('api/chatbot/', include('apps.chatbot_core.urls')),
+    # Consumer APIs
+    path('consumer/api/accounts/', include('apps.accounts.urls')),
+    path('consumer/api/chatbot/', include('apps.chatbot_core.urls')),
+    # User APIs  
+    path('user/api/accounts/', include('apps.accounts.urls')),
 ]
 
 if settings.DEBUG:

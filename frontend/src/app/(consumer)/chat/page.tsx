@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { ChatApi } from '@/modules/chat/api/chat.api';
-import { DocumentApi } from '@/modules/documents/api/document.api';
 import { useAuth } from '@/modules/auth/hooks/useAuth';
 import { Send, Trash2, LogOut, Brain, Dumbbell } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -12,15 +11,11 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<{ role: 'user' | 'bot'; text: string }[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [docTypes, setDocTypes] = useState<any[]>([]);
   const [filter, setFilter] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    DocumentApi.getTypes().then(setDocTypes).catch(console.error);
-  }, []);
-
+  
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -35,7 +30,7 @@ export default function ChatPage() {
 
     setMessages(prev => [...prev, { role: 'bot', text: '' }]);
 
-    await ChatApi.sendMessage({ user_input: userMsg, type_id: filter }, (fullText) => {
+    await ChatApi.sendMessage({ user_input: userMsg }, (fullText) => {
       setMessages(prev => {
         const newMsgs = [...prev];
         newMsgs[newMsgs.length - 1].text = fullText;
@@ -72,17 +67,6 @@ export default function ChatPage() {
         </nav>
 
         <div className="space-y-4 pt-6 border-t border-gray-100">
-          <div>
-            <label className="text-xs font-bold text-gray-400 uppercase">Context Filter</label>
-            <select 
-              className="w-full mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              <option value="">All Documents</option>
-              {docTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
           <button onClick={logout} className="w-full flex items-center justify-center space-x-2 p-2 text-gray-500 hover:text-red-600 text-sm">
             <LogOut size={16} />
             <span>Logout</span>

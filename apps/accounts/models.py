@@ -16,9 +16,9 @@ class Account(AbstractUser):
 
 class ConsumerProfile(models.Model):
     user = models.OneToOneField(Account, on_delete=models.CASCADE, related_name='profile')
-    weight = models.FloatField(default=0.0)
-    height = models.FloatField(default=0.0)
-    age = models.IntegerField(default=0)
+    weight = models.FloatField(default=70.0)  # Default 70kg
+    height = models.FloatField(default=170.0)  # Default 170cm
+    age = models.IntegerField(default=25)  # Default 25 years
     gender = models.CharField(max_length=10, default='male')
     activity_level = models.FloatField(default=1.2)
     body_type = models.CharField(max_length=100, blank=True)
