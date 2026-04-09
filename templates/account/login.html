@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Gemini RAG</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h1 { color: #1a73e8; text-align: center; margin-bottom: 30px; }
+        input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .footer { text-align: center; margin-top: 20px; font-size: 0.9rem; }
+        .error { color: red; font-size: 0.85rem; margin-bottom: 10px; display: none; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>Login</h1>
+    <div id="errorMsg" class="error">Invalid username or password</div>
+    <form id="loginForm">
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit">Sign In</button>
+    </form>
+    <div class="footer">
+        Don't have an account? <a href="{% url 'register_page' %}">Register here</a>
+    </div>
+</div>
+
+<script>
+    document.getElementById('loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const res = await fetch("{% url 'login_api' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: document.getElementById('username').value,
+                password: document.getElementById('password').value
+            })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            localStorage.setItem('access_token', data.access);
+            localStorage.setItem('refresh_token', data.refresh);
+            window.location.href = "{% url 'chat_page' %}";
+        } else {
+            document.getElementById('errorMsg').style.display = 'block';
+        }
+    };
+</script>
+</body>
+</html>

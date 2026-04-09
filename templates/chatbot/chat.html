@@ -42,10 +42,17 @@
     <h3>Knowledge Base</h3>
     
     <div style="margin-bottom: 20px;">
-        <a href="{% url 'manage_training' %}" class="btn-upload" style="display: block; text-decoration: none; color: #1a73e8; margin-bottom: 10px;">
+        <div style="padding: 10px; background: #e8f5e9; border-radius: 8px; margin-bottom: 15px; font-size: 0.85rem;">
+            User: <b>{{ user.username }}</b> ({{ user.role }})
+            <a href="{% url 'logout' %}" style="color: #d32f2f; margin-left: 10px; text-decoration: none;">Logout</a>
+        </div>
+
+        {% if user.role == 'USER' %}
+        <a href="{% url 'manage_training_page' %}" class="btn-upload" style="display: block; text-decoration: none; color: #1a73e8; margin-bottom: 10px;">
             &rarr; Training Center (Admin)
         </a>
-        <a href="{% url 'fitness_analyst' %}" class="btn-upload" style="display: block; text-decoration: none; color: #2e7d32; border-color: #2e7d32;">
+        {% endif %}
+        <a href="{% url 'fitness_page' %}" class="btn-upload" style="display: block; text-decoration: none; color: #2e7d32; border-color: #2e7d32;">
             &rarr; Fitness Analyst Dashboard
         </a>
     </div>
@@ -131,17 +138,40 @@
         const typing = appendMessage("bot typing", "Searching documents and thinking...");
 
         try {
-            const res = await fetch("{% url 'send_message' %}", {
+            const res = await fetch("{% url 'chatbot_chat' %}", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + localStorage.getItem('access_token')
+                },
                 body: JSON.stringify({ 
-                    message: text,
+                    user_input: text,
                     type_id: typeId 
                 })
             });
-            const data = await res.json();
+
+            if (!res.ok) {
+                const data = await res.json();
+                typing.className = "message bot";
+                typing.textContent = data.error || "Server error";
+                return;
+            }
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            typing.textContent = "";
             typing.className = "message bot";
-            typing.textContent = data.reply || data.error;
+            
+            let fullText = "";
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                fullText += chunk;
+                typing.textContent = fullText;
+                scrollToBottom();
+            }
         } catch (err) {
             typing.className = "message bot";
             typing.textContent = "Error: could not reach server.";
@@ -166,25 +196,25 @@
 
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("type_id", typeId);
+        formData.append("document_type", typeId);
 
         uploadStatus.textContent = "Uploading and processing...";
         
         try {
-            const res = await fetch("{% url 'upload_document' %}", {
+            const res = await fetch("{% url 'document-list' %}", {
                 method: "POST",
+                headers: { 
+                    "Authorization": "Bearer " + localStorage.getItem('access_token')
+                },
                 body: formData
             });
             const data = await res.json();
             
-            if (data.status === "success") {
-                uploadStatus.textContent = "Success: " + data.filename;
-                const item = document.createElement("div");
-                item.className = "doc-item";
-                item.textContent = `${data.filename} (${data.type})`;
-                docList.prepend(item);
+            if (res.ok) {
+                uploadStatus.textContent = "Success: " + data.file;
+                location.reload();
             } else {
-                uploadStatus.textContent = "Error: " + data.message;
+                uploadStatus.textContent = "Error: " + JSON.stringify(data);
             }
         } catch (err) {
             uploadStatus.textContent = "Upload failed.";
@@ -194,7 +224,12 @@
     }
 
     async function clearChat() {
-        await fetch("{% url 'clear_chat' %}");
+        await fetch("{% url 'clear_chat' %}", {
+            method: "POST",
+            headers: { 
+                "Authorization": "Bearer " + localStorage.getItem('access_token')
+            }
+        });
         messagesDiv.innerHTML = "";
         appendMessage("bot", "Chat cleared. How can I help you today?");
     }

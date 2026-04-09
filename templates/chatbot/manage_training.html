@@ -37,7 +37,7 @@
 <body>
 
 <div class="container">
-    <a href="{% url 'chatbot' %}" class="nav-link">&larr; Back to Chat</a>
+    <a href="{% url 'chat_page' %}" class="nav-link">&larr; Back to Chat</a>
     <h1>Training Management Center</h1>
 
     <!-- Part 1: Document Types -->
@@ -127,9 +127,12 @@
         if (!name) return alert("Please enter a name");
 
         try {
-            const res = await fetch("{% url 'create_document_type' %}", {
+            const res = await fetch("{% url 'documenttype-list' %}", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + localStorage.getItem('access_token')
+                },
                 body: JSON.stringify({ name: name, description: desc })
             });
             const data = await res.json();
@@ -162,8 +165,11 @@
         status.textContent = "Processing training data... please wait.";
 
         try {
-            const res = await fetch("{% url 'upload_document' %}", {
+            const res = await fetch("{% url 'document-list' %}", {
                 method: "POST",
+                headers: { 
+                    "Authorization": "Bearer " + localStorage.getItem('access_token')
+                },
                 body: formData
             });
             const data = await res.json();
@@ -183,14 +189,16 @@
         if (!confirm("Are you sure you want to delete this document and its training data?")) return;
 
         try {
-            const res = await fetch(`/chat/delete-doc/${docId}/`, {
-                method: "POST"
+            const res = await fetch(`/api/documents/${docId}/`, {
+                method: "DELETE",
+                headers: { 
+                    "Authorization": "Bearer " + localStorage.getItem('access_token')
+                }
             });
-            const data = await res.json();
-            if (data.status === "success") {
+            if (res.ok) {
                 location.reload();
             } else {
-                alert("Error: " + data.message);
+                alert("Error deleting document");
             }
         } catch (err) {
             alert("Failed to delete document.");

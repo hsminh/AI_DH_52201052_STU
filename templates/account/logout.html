@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <script>
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = "{% url 'login_page' %}";
+    </script>
+</body>
+</html>

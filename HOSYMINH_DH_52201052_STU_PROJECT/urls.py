@@ -21,7 +21,13 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('chat/', include('chatbot.urls')),
+    # Pages (HTML)
+    path('', include('apps.pages.urls')),
+    # APIs (JSON/Stream)
+    path('api/accounts/', include('apps.accounts.urls')),
+    path('api/documents/', include('apps.documents.urls')),
+    path('api/fitness/', include('apps.fitness.urls')),
+    path('api/chatbot/', include('apps.chatbot_core.urls')),
 ]
 
 if settings.DEBUG:
