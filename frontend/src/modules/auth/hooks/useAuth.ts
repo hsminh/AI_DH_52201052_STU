@@ -65,7 +65,7 @@ export const useAuth = (requiredRole?: AccountRole) => {
   const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
-    router.push('/login');
+    router.push('/register');
   };
 
   return { user, loading, logout };

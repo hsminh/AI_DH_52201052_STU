@@ -1,142 +1,172 @@
 import json
 import os
-import time
-import random
+import requests
+import base64
+from datetime import datetime, timedelta
 from django.http import StreamingHttpResponse, JsonResponse
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from PIL import Image
-import google.genai as genai
-from google.genai.errors import ServerError, APIError
 from .services import FitnessService
 from apps.chatbot_core.prompts import get_meal_tracking_prompt
-from apps.chatbot_core.services import RAGService
 
-class FitnessAnalysisView(APIView):
+class BaseFitnessView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        user_input = request.data.get("user_input", "").strip()
-        image_file = request.FILES.get("image")
+    def get_current_time_info(self):
+        # Lấy giờ Việt Nam (GMT+7)
+        vn_time = datetime.utcnow() + timedelta(hours=7)
+        hour = vn_time.hour
         
-        print(f"Backend - User input: '{user_input}'")
-        print(f"Backend - Image file: {image_file}")
-        if image_file:
-            print(f"Backend - Image name: {image_file.name}")
-            print(f"Backend - Image size: {image_file.size}")
-            print(f"Backend - Image type: {image_file.content_type}")
-        print(f"Backend - Request data keys: {list(request.data.keys())}")
-        print(f"Backend - Request FILES keys: {list(request.FILES.keys())}")
+        if 5 <= hour < 11:
+            session = "Sáng"
+        elif 11 <= hour < 14:
+            session = "Trưa"
+        elif 14 <= hour < 18:
+            session = "Chiều/Phụ"
+        elif 18 <= hour < 22:
+            session = "Tối"
+        else:
+            session = "Khuya"
+            
+        return f"{vn_time.strftime('%H:%M:%S')} (Buổi {session})"
 
+    def get_profile_and_metrics(self, request):
         try:
             profile = request.user.profile
-            print(f"Backend - User profile data: weight={profile.weight}, height={profile.height}, age={profile.age}, gender={profile.gender}")
         except AttributeError:
-            # Fallback for USER role without profile
             profile = type('obj', (object,), {
-                'weight': 70, 'height': 170, 'age': 25, 'gender': 'male', 
+                'weight': 70, 'height': 170, 'age': 25, 'gender': 'male',
                 'activity_level': 1.2, 'body_type': 'Normal', 'health_condition': 'None'
             })
 
         try:
             body_metrics = FitnessService.calculate_metrics(
-                profile.weight, profile.height, profile.age, profile.gender, 
-                profile.activity_level, body_type=profile.body_type, 
+                profile.weight, profile.height, profile.age, profile.gender,
+                profile.activity_level, body_type=profile.body_type,
                 health_condition=profile.health_condition
             )
+            return profile, body_metrics
         except ValueError as e:
-            return JsonResponse({
-                "error": "Invalid profile data", 
-                "message": str(e),
-                "details": "Please update your profile with valid height, weight, and age information."
-            }, status=400)
+            raise e
 
-        # Use meal tracking prompt with user input, body metrics, and workout data
-        # For now, we'll pass None for workout_data, but this can be extended later
-        prompt = get_meal_tracking_prompt(user_input, body_metrics, workout_data=None)
+    def stream_response(self, profile, body_metrics, models, messages):
+        def stream_generator():
+            profile_payload = json.dumps({
+                "weight": profile.weight,
+                "height": profile.height,
+                "age": profile.age,
+                "bmi": body_metrics['bmi'],
+                "status": body_metrics['status']
+            })
+            yield f"[PROFILE_DATA]{profile_payload}[/PROFILE_DATA]"
 
-        def generate_response_with_retry(client, model, contents, max_retries=3):
-            """Generate response with exponential backoff retry logic"""
-            for attempt in range(max_retries):
+            LOCAL_ENDPOINT = "http://localhost:20128/v1/chat/completions"
+            api_key = os.environ.get("OMINIROUTE_API_KEY", "")
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+
+            success = False
+            last_error = ""
+
+            for model in models:
                 try:
-                    return client.models.generate_content_stream(
-                        model=model,
-                        contents=contents,
+                    print(f"--- Attempting Analysis with Model: {model} ---")
+                    payload = {
+                        "model": model,
+                        "messages": messages,
+                        "stream": True
+                    }
+                    
+                    response = requests.post(
+                        LOCAL_ENDPOINT,
+                        json=payload,
+                        headers=headers,
+                        stream=True,
+                        timeout=120
                     )
-                except (ServerError, APIError) as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    
-                    # Exponential backoff with jitter
-                    base_delay = 2 ** attempt
-                    jitter = random.uniform(0, 1)
-                    delay = base_delay + jitter
-                    
-                    print(f"API Error (attempt {attempt + 1}/{max_retries}): {e}")
-                    print(f"Retrying in {delay:.2f} seconds...")
-                    
-                    time.sleep(delay)
+
+                    if response.status_code == 200:
+                        print(f"SUCCESS: Model {model} is responding.")
+                        success = True
+                        for line in response.iter_lines():
+                            if line:
+                                line = line.decode('utf-8')
+                                if line.startswith("data: "):
+                                    data_str = line[6:]
+                                    if data_str.strip() == "[DONE]":
+                                        break
+                                    try:
+                                        data = json.loads(data_str)
+                                        delta_content = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                        if delta_content:
+                                            yield delta_content
+                                    except:
+                                        pass
+                        print(f"--- Analysis Completed with Model: {model} ---")
+                        break
+                    else:
+                        print(f"FAILED: Model {model} returned status {response.status_code}")
+                        last_error = f"Model {model} failed ({response.status_code}): {response.text}"
+                        continue # Thử model tiếp theo
                 except Exception as e:
-                    # For non-API errors, don't retry
-                    raise e
+                    print(f"ERROR: Exception while calling {model}: {str(e)}")
+                    last_error = f"Request to {model} failed: {str(e)}"
+                    continue
+
+            if not success:
+                yield f"[ERROR]Tất cả các model đều thất bại. Lỗi cuối cùng: {last_error}[/ERROR]"
+
+        return StreamingHttpResponse(stream_generator(), content_type='text/plain')
+
+class TextAnalysisView(BaseFitnessView):
+    def post(self, request):
+        user_input = request.data.get("user_input", "").strip()
+        
+        try:
+            profile, body_metrics = self.get_profile_and_metrics(request)
+        except ValueError as e:
+            return JsonResponse({"error": "Invalid profile data", "message": str(e)}, status=400)
+
+        current_time_info = self.get_current_time_info()
+        prompt = get_meal_tracking_prompt(user_input, body_metrics, current_time=current_time_info, workout_data=None)
+        
+        models = ["text-smart-combo", "free-stack"]
+        messages = [{"role": "user", "content": prompt}]
+
+        return self.stream_response(profile, body_metrics, models, messages)
+
+class ImageAnalysisView(BaseFitnessView):
+    def post(self, request):
+        user_input = request.data.get("user_input", "").strip()
+        image_file = request.FILES.get("image")
+
+        if not image_file:
+            return JsonResponse({"error": "No image provided"}, status=400)
 
         try:
-            client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-            
-            # Model list with fallbacks
-            MODELS = [
-                "gemini-3.1-flash-lite-preview",  # Primary model
-                "gemini-3.1-pro-preview",        # Fallback 1
-                # "gemini-1.5-pro",          # Fallback 2
-            ]
-            
-            contents = [prompt]
-            if image_file:
-                img = Image.open(image_file)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                contents.append(img)
+            profile, body_metrics = self.get_profile_and_metrics(request)
+        except ValueError as e:
+            return JsonResponse({"error": "Invalid profile data", "message": str(e)}, status=400)
 
-            def stream_generator():
-                profile_payload = json.dumps({
-                    "weight": profile.weight,
-                    "height": profile.height,
-                    "age": profile.age,
-                    "bmi": body_metrics['bmi'],
-                    "status": body_metrics['status']
-                })
-                yield f"[PROFILE_DATA]{profile_payload}[/PROFILE_DATA]"
+        current_time_info = self.get_current_time_info()
+        prompt = get_meal_tracking_prompt(user_input, body_metrics, current_time=current_time_info, workout_data=None)
+        
+        image_data = base64.b64encode(image_file.read()).decode('utf-8')
+        image_url = f"data:{image_file.content_type};base64,{image_data}"
 
-                # Try each model until one works
-                for i, model in enumerate(MODELS):
-                    try:
-                        print(f"Trying model: {model}")
-                        response = generate_response_with_retry(client, model, contents)
-                        
-                        for chunk in response:
-                            if chunk.text:
-                                yield chunk.text
-                        break  # Success, exit model loop
-                        
-                    except (ServerError, APIError) as e:
-                        print(f"Model {model} failed: {e}")
-                        if i == len(MODELS) - 1:  # Last model failed
-                            error_msg = "All AI models are currently unavailable due to high demand. Please try again in a few minutes."
-                            yield f"[ERROR]{error_msg}[/ERROR]"
-                        else:
-                            print(f"Trying next model...")
-                            continue
-                    except Exception as e:
-                        print(f"Unexpected error with model {model}: {e}")
-                        if i == len(MODELS) - 1:  # Last model failed
-                            error_msg = f"AI service error: {str(e)}. Please try again."
-                            yield f"[ERROR]{error_msg}[/ERROR]"
-                        else:
-                            continue
+        models = ["vision-ultra-combo", "free-stack"]
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]
+            }
+        ]
 
-            return StreamingHttpResponse(stream_generator(), content_type='text/plain')
-
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+        return self.stream_response(profile, body_metrics, models, messages)

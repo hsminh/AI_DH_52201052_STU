@@ -1,15 +1,60 @@
 import os
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import requests
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from django.conf import settings
+from langchain_core.embeddings import Embeddings
+
+class OmniRouteEmbeddings(Embeddings):
+    def __init__(self, model="mistral/mistral-embed", api_url="http://localhost:20128/v1/embeddings"):
+        self.model = model
+        self.api_url = api_url
+        self.api_key = os.environ.get("OMINIROUTE_API_KEY", "")
+
+    def _get_headers(self):
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+    def embed_documents(self, texts):
+        try:
+            response = requests.post(
+                self.api_url,
+                json={"input": texts, "model": self.model},
+                headers=self._get_headers(),
+                timeout=60
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return [item["embedding"] for item in data["data"]]
+            else:
+                raise Exception(f"OmniRoute Error ({response.status_code}): {response.text}")
+        except Exception as e:
+            print(f"Embedding failed: {str(e)}")
+            raise
+
+    def embed_query(self, text):
+        try:
+            response = requests.post(
+                self.api_url,
+                json={"input": [text], "model": self.model},
+                headers=self._get_headers(),
+                timeout=60
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data["data"][0]["embedding"]
+            else:
+                raise Exception(f"OmniRoute Error ({response.status_code}): {response.text}")
+        except Exception as e:
+            print(f"Query embedding failed: {str(e)}")
+            raise
 
 class RAGService:
-    _embeddings = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
-        google_api_key=os.environ.get("GEMINI_API_KEY")
-    )
+    # Use OmniRouteEmbeddings exclusively with correct embedding model
+    _embeddings = OmniRouteEmbeddings()
     _chroma_db_dir = os.path.join(settings.BASE_DIR, "chroma_db")
 
     @classmethod
