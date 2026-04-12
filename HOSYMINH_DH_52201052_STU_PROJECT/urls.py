@@ -21,18 +21,16 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # Pages (HTML)
-    path('', include('apps.pages.urls')),
     # APIs (JSON/Stream)
-    path('api/accounts/', include('apps.accounts.urls')),
-    path('api/documents/', include('apps.documents.urls')),
-    path('api/fitness/', include('apps.fitness.urls')),
-    path('api/chatbot/', include('apps.chatbot_core.urls')),
+    path('api/accounts/', include('apps.accounts.routing.api.urls')),
+    path('api/documents/', include('apps.documents.routing.api.urls')),
+    path('api/fitness/', include('apps.fitness.routing.api.urls')),
+    path('api/chatbot/', include('apps.chatbot_core.routing.api.urls')),
     # Consumer APIs
-    path('consumer/api/accounts/', include('apps.accounts.urls')),
-    path('consumer/api/chatbot/', include('apps.chatbot_core.urls')),
-    # User APIs  
-    path('user/api/accounts/', include('apps.accounts.urls')),
+    path('consumer/api/accounts/', include('apps.accounts.routing.api.urls')),
+    path('consumer/api/chatbot/', include('apps.chatbot_core.routing.api.urls')),
+    # User APIs
+    path('user/api/accounts/', include('apps.accounts.routing.api.urls')),
 ]
 
 if settings.DEBUG:

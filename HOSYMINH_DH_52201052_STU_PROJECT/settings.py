@@ -49,7 +49,6 @@ INSTALLED_APPS = [
     'apps.documents',
     'apps.fitness',
     'apps.chatbot_core',
-    'apps.pages',
 ]
 
 REST_FRAMEWORK = {

@@ -1,382 +1,313 @@
-# Code Generation Instructions for MyBranding Project
+# Code Generation Instructions — STU Project (HOSYMINH_DH_52201052)
 
 ## Project Overview
 
-The project follows a Service-Oriented Architecture (SOA) design approach with clear separation of concerns:
-### Repository Model Pattern
-- **Model**: Data models representing the business domain
-- **Repository Pattern**: Data access layer for database operations
-- **Service Layer**: Business logic encapsulation
-- **API View Layer**: REST endpoints with proper permission controls
-### Multi-tenant Design
-- Tenant-specific isolation for data and functionality
-- Organization-scoped data access throughout
+This is a full-stack AI-powered health & fitness assistant application built with Django REST Framework (backend) and Next.js (frontend). The backend follows a layered architecture with strict separation of concerns: Models → Repositories → Services → Views → Routing.
 
-### Project Runtime Environment
-- **Language**: Python
-- **Version**: 3.13
-- **Framework**: Django 5.2.2, REST Framework (DRF)
-- **Build System**: Poetry
-- **Package Manager**: Poetry
-- **Worker**: Celery
-- **Database**: Cassandra Engine / Scylla (primary), with support for other providers
+### Runtime Environment
+- **Language**: Python 3.13
+- **Framework**: Django 6.x, Django REST Framework (DRF)
+- **Auth**: SimpleJWT
+- **AI / RAG**: LangChain, ChromaDB, OmniRoute LLM proxy
+- **Database**: SQLite (dev) — standard Django ORM
+- **Frontend**: Next.js (TypeScript), Tailwind CSS, Yarn
 
+---
 
 ## Project Principles
-### 1. Application Structure
-The repository is organized into multiple domain-specific modules following a standardized structure:
-- Each feature is organized as a Django app (e.g., `accounts`, `commerce`, `crm`, `tenants`)
-- **mybranding**: Core application configuration and settings
-- **core**: Base functionality and shared utilities
-- **accounts**: User authentication and management
-- **event**: Tenant's branding event management
-- **tenants**: Multi-tenant functionality and organization management
-- **crm**: Customer relationship management
-- **commerce**: E-commerce and product management
-- **rewards**: Loyalty and rewards system
-- **pos**: Point of services system
-- **payment**: Payment processing integrations
-- ...feature-specific apps
 
-### 2. Application Registration Process
+### 1. Layer Responsibilities
 
-- **New applications must be registered** in `mybranding/configs/installed_apps.py` by adding them to the appropriate feature group tuple (e.g., `CORE_APPS`, `TENANT_APPS`, `COMMERCE_APPS`, etc.) or creating a new `{FEATURE}_APPS` tuple if the feature group doesn't exist, then registering it in the final `INSTALLED_APPS` combination
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| **Model** | `app/models/` | Django ORM data definition only. No business logic. |
+| **Repository** | `app/repositories/` | All DB queries. Inherits `BaseRepository`. No business logic. |
+| **Service** | `app/services/` | Business logic, orchestration, transactions. Inherits `BaseService`. Calls repository only. |
+| **View** | `app/views/api/` | HTTP request/response handling. Calls service only. No direct DB access. |
+| **Serializer** | `app/serializers/` | DRF input validation and output formatting. |
+| **Routing** | `app/routing/api/` | URL definitions. Uses DRF Router for ViewSets. |
+| **Data** | `app/data/` | Static data: prompts, constants, lookup tables. |
 
-#### For Existing Feature Groups:
-Add your new app to the appropriate existing feature group tuple:
-```python
-# Example: Adding a new commerce app
-COMMERCE_APPS = (
-    'commerce.products',
-    'commerce.new_feature',  # <- Add new app here
-)
-```
+**Rules:**
+- Views must never call repositories directly — always go through a service.
+- Services must never import from views.
+- Repositories must never contain business logic.
 
-#### For New Feature Groups:
-1. Create a new feature group tuple following the naming convention `{FEATURE}_APPS`:
-```python
-# Example: Creating a new analytics feature group
-ANALYTICS_APPS = (
-    'analytics',
-    'analytics.reports',
-    'analytics.dashboards',
-)
-```
+---
 
-2. Add the new feature group to the final `INSTALLED_APPS` combination:
-```python
-INSTALLED_APPS += (
-    # ... other existing groups ...
-    ANALYTICS_APPS # <- Add new feature group here
-```
+### 2. Standard App Structure
 
-### 3. Standard App Structure
-Every app should follow this structure:
 ```
 app_name/
 ├── __init__.py
-├── apps.py                     # Django app configuration
-├── enums/                      # Enumerations and constants
+├── apps.py
+├── data/                           # Static data (prompts, constants)
 │   ├── __init__.py
-│   └── app_permissions.py      # Permission definitions
-├── models/                     # Data models
-│   ├── __init__.py
+│   └── prompts.py
+├── models/                         # Django ORM models
+│   ├── __init__.py                 # Re-exports all models
 │   └── model_name.py
-├── repositories/               # Data access layer
-│   ├── __init__.py
+├── repositories/                   # Data access layer
+│   ├── __init__.py                 # Re-exports all repositories
 │   └── model_repository.py
-├── serializers/                # DRF serializers
-│   ├── requests/               # Request serializers
+├── serializers/                    # DRF serializers
 │   ├── __init__.py
-│   └── model_serializer.py     # Response serializers
-├── services/                   # Business logic layer
-│   ├── __init__.py
+│   └── model_serializer.py
+├── services/                       # Business logic layer
+│   ├── __init__.py                 # Re-exports all services
 │   └── model_service.py
-├── views/                      # API views
-│   └── api/
-│       ├── admin/              # Admin-level endpoints
-│       ├── space/              # Tenant-scoped endpoints
-│       ├── consumer/           # Consumer endpoints
-│       ├── community/          # Community endpoints
-│       └── __init__.py
-├── routing/                    # URL configurations
+├── views/                          # API views / ViewSets
+│   ├── __init__.py
 │   └── api/
 │       ├── __init__.py
-│       ├── admin_urls.py
-│       ├── space_urls.py
-│       ├── consumer_urls.py
-│       └── community_urls.py
-└── locale/                     # Internationalization files
+│       └── model_view.py
+├── routing/                        # URL configuration
+│   ├── __init__.py
+│   └── api/
+│       ├── __init__.py
+│       └── urls.py
+└── migrations/                     # Django migrations
 ```
 
-## Scaffold Guidelines
-For quickly generating new applications, use the scaffold standard template located in `templates/scaffold/dummy/`. 
-This scaffold provides a complete template structure for creating new Django applications with standardized patterns.
+---
 
-See the scaffold template documentation for more details on how to use it:
-[mcp_scaffold.md](scaffold.md)
+### 3. Application Registration
+
+Add new apps to `HOSYMINH_DH_52201052_STU_PROJECT/settings.py`:
+
+```python
+INSTALLED_APPS = [
+    ...
+    'apps.your_new_app',
+]
+```
+
+Register URLs in `HOSYMINH_DH_52201052_STU_PROJECT/urls.py`:
+
+```python
+path('api/your_app/', include('apps.your_app.routing.api.urls')),
+```
+
+---
 
 ## Code Generation Rules
 
 ### 1. Models
-- **Base Classes**: All models should inherit from `BaseTimeStampedModel` from `core.db.models`
-- **Primary Keys**: Use UUID primary keys with `generate_uuid` from `core.utils.uuid`
-- **Columns**: Import column types from `core.db.models.columns`
-- **Required Attributes**:
-  - `__table_name__`: Database table name (plural, snake_case)
-  - `__permission_key__`: Permission identifier (plural, snake_case)
-  - `__permission_tenant_scope__`: Boolean for tenant scoping
-- **Meta Class**: Include `get_pk_field = 'uid'` for UUID primary keys
 
-Example:
+- Inherit from `django.db.models.Model`
+- Keep models thin — data definition and `__str__` only
+- Re-export all models from `models/__init__.py`
+
 ```python
-from core.db.models import columns
-from core.db.models import BaseTimeStampedModel
-from core.utils.uuid import generate_uuid
+# models/account.py
+from django.db import models
 
-class Product(BaseTimeStampedModel):
-    uid = columns.UUID(primary_key=True, default=generate_uuid)
-    name = columns.Text(required=True, max_length=255)
-    description = columns.Text(required=False)
-    
-    __table_name__ = 'products'
-    __permission_key__ = 'products'
-    __permission_tenant_scope__ = True
-    
-    class Meta:
-        get_pk_field = 'uid'
+class Account(models.Model):
+    username = models.CharField(max_length=150, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.username
 ```
+
+```python
+# models/__init__.py
+from .account import Account
+__all__ = ['Account']
+```
+
+---
 
 ### 2. Repositories
-- **Base Class**: Inherit from `BaseRepository` from `core.repositories`
-- **Pattern**: Repository handles all database operations
-- **Naming**: `{ModelName}Repository`
-- **Organization Scoping**: Include methods for tenant-scoped queries
 
-Example:
+- Inherit from `core.repositories.base_repository.BaseRepository`
+- Set `model` class attribute
+- Only DB queries here — no business rules
+- Naming: `{ModelName}Repository`
+
 ```python
-from core.repositories import BaseRepository
-from app_name.models import ModelName
+# repositories/account_repository.py
+from core.repositories.base_repository import BaseRepository
+from apps.accounts.models import Account
 
-class ModelNameRepository(BaseRepository):
-    def __init__(self):
-        self.model = ModelName
-    
-    def get_all_by_organization(self, organization_uid):
-        return self.model.objects.filter(organization_uid=organization_uid)
+class AccountRepository(BaseRepository):
+    model = Account
+
+    def get_by_username(self, username):
+        """
+        Find account by username.
+        @param username: The account's username string
+        @return: Account instance or None
+        """
+        return self.get(username=username)
 ```
+
+```python
+# repositories/__init__.py
+from .account_repository import AccountRepository
+__all__ = ['AccountRepository']
+```
+
+---
 
 ### 3. Services
-- **Pattern**: Services contain business logic
-- **Naming**: `{ModelName}Service`
-- **Dependencies**: Inject repositories in `__init__`
-- **Methods**: Create, update, delete operations with business rules
 
-Example:
+- Inherit from `core.services.base_service.BaseService`
+- Instantiate repository in `__init__`
+- All business logic, validations, and transactions go here
+- Naming: `{ModelName}Service`
+
 ```python
-from app_name.repositories import ModelNameRepository
+# services/account_service.py
+from django.db import transaction
+from core.services.base_service import BaseService
+from apps.accounts.repositories import AccountRepository
 
-class ModelNameService:
+class AccountService(BaseService):
     def __init__(self):
-        self.repository = ModelNameRepository()
-    
-    def create_model(self, organization, data):
-        # Business logic here
-        return self.repository.create({
-            'organization_uid': organization.uid,
-            **data
-        })
+        self.repository = AccountRepository()
+
+    def register(self, username, password, email):
+        """
+        Register a new account with hashed password.
+        @param username: Unique username
+        @param password: Plain text password (will be hashed)
+        @param email: User email address
+        @return: Newly created Account instance
+        """
+        with transaction.atomic():
+            return self.repository.create_account(username, password, email)
 ```
+
+---
 
 ### 4. Serializers
-- **Response Serializers**: For API responses, inherit from base serializers
-- **Request Serializers**: For input validation, separate create/update serializers
-- **Naming**: 
-  - Response: `{ModelName}Serializer`
-  - Request: `Create{ModelName}RequestSerializer`, `Update{ModelName}RequestSerializer`
 
-### 5. Views (ViewSets)
-- **Base Classes**: 
-  - `UserScopeProtectedModelViewSet` for tenant-scoped endpoints
-  - `AdminScopeProtectedModelViewSet` for admin endpoints
-- **Permissions**: Use `@permission_required` decorator on all methods
-- **Organization Context**: Always extract `organization` from `request.tenant`
-- **Standard Methods**: list, create, retrieve, update, destroy
-- **Filtering**: Define `filterset_fields` and `search_fields`
+- Naming: `{ModelName}Serializer` for response, `Create{ModelName}RequestSerializer` for input
+- Keep validation logic in serializers, not in views
 
-Example:
 ```python
-from rest_framework.response import Response
-from rest_framework import status
-from core.decorators import permission_required
-from core.views.api.protected.user import UserScopeProtectedModelViewSet
+# serializers/account_serializer.py
+from rest_framework import serializers
+from apps.accounts.models import Account
 
-class ModelNameViewSet(UserScopeProtectedModelViewSet):
-    filterset_fields = {
-        'name': ['contains', 'exact'],
-    }
-    search_fields = ['name']
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.serializer_class = ModelNameSerializer
-        self.repository = ModelNameRepository()
-        self.queryset = self.repository.all()
-    
-    @permission_required(ModelPermissions.MODEL_READ.value)
-    def list(self, request, *args, **kwargs):
-        organization = getattr(request, 'tenant', None)
-        self.queryset = self.repository.get_all_by_organization(
-            organization.uid if organization else None
-        )
-        return super().list(request, *args, **kwargs)
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ['id', 'username', 'email']
 ```
 
-### 6. Permissions (Enums)
-- **Location**: `enums/{app_name}_permissions.py`
-- **Base Class**: Inherit from appropriate base enum
-- **Naming**: `{APP_NAME}_{ACTION}` (e.g., `PRODUCTS_READ`, `PRODUCTS_WRITE`)
+---
 
-Example:
+### 5. Views (ViewSets / APIView)
+
+- Use DRF `ModelViewSet` or `APIView`
+- Instantiate service in `__init__` or as class attribute
+- Never access DB directly — always call service
+- Permission via `permission_classes`
+
 ```python
-from core.enums.base_enum import BaseEnum
+# views/api/account_view.py
+from rest_framework import generics, permissions
+from apps.accounts.serializers import AccountSerializer
+from apps.accounts.services import AccountService
 
-class ProductPermissions(BaseEnum):
-    PRODUCT_READ = 'products.read'
-    PRODUCT_WRITE = 'products.write'
-    PRODUCT_DELETE = 'products.delete'
+class RegisterView(generics.CreateAPIView):
+    serializer_class = AccountSerializer
+    permission_classes = [permissions.AllowAny]
 ```
 
-### 7. URL Routing
-- **Structure**: Separate files for different API contexts (admin, space, consumer, community)
-- **Patterns**: Use DRF router for ViewSets
-- **Naming**: Consistent URL patterns with app prefixes
+---
 
-Example:
+### 6. Routing
+
 ```python
+# routing/api/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from app_name.views.api.space import ModelNameViewSet
+from apps.your_app.views.api import YourModelViewSet
 
 router = DefaultRouter()
-router.register(r'model-names', ModelNameViewSet, basename='model-names')
+router.register(r'items', YourModelViewSet, basename='items')
 
 urlpatterns = [
     path('', include(router.urls)),
 ]
 ```
 
-### 8. Automatic URL Registration
-- **No Manual Registration Required**: Feature URLs are automatically registered by the system
-- **Auto-Discovery**: The `core/routing/__init__.py` module automatically scans all installed apps for URL patterns
-- **Convention-Based**: URLs are discovered based on the standard routing structure (`app_name/routing/api/`)
-- **Multiple API Versions**: Supports automatic registration for multiple API versions (v1, v2)
-- **Partner URLs**: Also supports automatic registration of partner-specific URLs when available
+---
 
-**Important**: Do not manually register app URLs in the main project URLs configuration. The system will automatically discover and include them based on the established routing conventions.
+### 7. Data / Prompts
 
-## API Endpoint Conventions
+Static data (LLM prompts, constants, lookup tables) live in `app/data/`:
 
-### 1. URL Structure
-- **Admin**: `/api/admin/{app_name}/{resource}/`
-- **Space** (Tenant): `/api/space/{app_name}/{resource}/`
-- **Consumer**: `/api/consumer/{app_name}/{resource}/`
-- **Community**: `/api/community/{app_name}/{resource}/`
+```python
+# data/prompts.py
+SYSTEM_PROMPT = "You are a helpful assistant..."
 
-### 2. HTTP Methods
-- `GET` - List/Retrieve
-- `POST` - Create
-- `PUT` - Full Update
-- `PATCH` - Partial Update
-- `DELETE` - Delete
+def get_analysis_prompt(user_input: str, metrics: dict) -> str:
+    """
+    Build the LLM analysis prompt for a given user input and metrics.
+    @param user_input: Raw text or food description from the user
+    @param metrics: User health metrics dict (bmi, bmr, tdee, etc.)
+    @return: Formatted prompt string
+    """
+    return f"Analyze: {user_input} for user with metrics: {metrics}"
+```
 
-### 3. Response Format
-- Use consistent response structure
-- Include proper HTTP status codes
-- Handle errors with appropriate error responses
+---
 
-## Multi-Tenancy Considerations
+## Creating a New App
 
-### 1. Organization Scoping
-- Always filter data by organization context
-- Extract organization from `request.tenant`
-- Include organization_uid in create operations
+```bash
+# From project root
+python manage.py startapp_scaffold <app_name>
+# For nested app
+python manage.py startapp_scaffold <master_app>.<sub_app>
+```
 
-### 2. Permissions
-- Use tenant-scoped permissions where applicable
-- Set `__permission_tenant_scope__ = True` in models
-- Apply permission decorators to all view methods
+Then:
+1. Add to `INSTALLED_APPS` in `settings.py`
+2. Register URLs in `urls.py`
+3. Run `python manage.py makemigrations` if models added
+4. Implement: Models → Repository → Service → Serializer → View → Routing
 
-## Database Considerations
+---
 
-### 1. Cassandra Integration
-- The project uses Cassandra as the primary database
-- Models use custom column types from `core.db.models.columns`
-- Follow Cassandra best practices for data modeling
+## API URL Conventions
 
-### 2. UUID Primary Keys
-- Always use UUID primary keys for new models
-- Use `generate_uuid` utility for default values
-- Set `get_pk_field = 'uid'` in model Meta class
+| Context | Prefix |
+|---------|--------|
+| General API | `/api/{app}/` |
+| Consumer | `/consumer/api/{app}/` |
+| Admin/Space | `/user/api/{app}/` |
 
-## Testing Guidelines
+---
 
-### 1. Test Structure
-- Create tests in the `tests/` directory
-- Follow the same modular structure as the main code
-- Test repositories, services, and API endpoints separately
+## Docstring Format
 
-### 2. Test Data
-- Use factories for creating test data
-- Mock external dependencies
-- Test both success and error scenarios
+All public methods must have docstrings in this format:
 
-## Development Workflow
+```python
+def method_name(self, param1, param2):
+    """
+    One-line description of what this method does.
+    @param param1: Description of param1
+    @param param2: Description of param2
+    @return: Description of return value
+    """
+```
 
-### 1. Creating New Features
-1. Use the scaffold template as a starting point
-2. Follow the established patterns and conventions
-3. Implement in order: Models → Repositories → Services → Serializers → Views → URLs
-4. Add appropriate permissions and tests
+---
 
-### 2. Code Quality
-- Follow PEP 8 style guidelines
-- Use type hints where appropriate
-- Write comprehensive docstrings
-- Ensure proper error handling
+## Core Utilities Reference
 
-### 3. Documentation
-- Document API endpoints
-- Include usage examples
-- Update this guide when patterns change
-
-## Common Patterns
-
-### 1. Error Handling
-- Use custom exceptions from `core.exceptions`
-- Return appropriate HTTP status codes
-- Provide meaningful error messages
-
-### 2. Validation
-- Use DRF serializers for input validation
-- Implement custom validators when needed
-- Validate business rules in services
-
-### 3. Caching
-- Use repository caching patterns where appropriate
-- Implement cache invalidation strategies
-- Consider performance implications
-
-## Integration Points
-
-### 1. External Services
-- Use service classes for external API integrations
-- Implement proper error handling and retries
-- Mock external services in tests
-
-### 2. Background Tasks
-- Use Celery for asynchronous tasks
-- The background tasks system is configured in the `worker/tasks` directory
-- Handle task failures gracefully
-
-This guide should be followed for all code generation and development activities in the MyBranding project to ensure consistency, maintainability, and adherence to established patterns.
+| Module | Path | Purpose |
+|--------|------|---------|
+| BaseRepository | `core/repositories/base_repository.py` | Standard ORM CRUD for all repositories |
+| BaseService | `core/services/base_service.py` | Delegates to repository, base for all services |
+| HybridCacheService | `apps/fitness/services/cache_service.py` | Two-layer cache (DB + ChromaDB semantic) |
+| RAGService | `apps/chatbot_core/services/rag_service.py` | Document ingestion and vector retrieval |
+| Pipeline | `apps/fitness/services/pipeline.py` | Food identification + LLM streaming pipeline |
+| str helpers | `core/utils/helpers/str.py` | to_pascal_case, to_snake_case, to_plural_snake_case |
+| Scaffold command | `core/management/commands/startapp_scaffold.py` | Generates new app from dummy template |
