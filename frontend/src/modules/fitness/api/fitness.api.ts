@@ -20,4 +20,12 @@ export class FitnessApi extends AbstractApiClient {
       onChunk(fullText);
     });
   }
+
+  static async getCookingRecipe(data: { food_name: string }, onChunk: (text: string) => void) {
+    let fullText = '';
+    return this.stream('/fitness/cooking-recipe/', data, (chunk) => {
+      fullText += chunk;
+      onChunk(fullText);
+    });
+  }
 }

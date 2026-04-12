@@ -29,12 +29,12 @@ export default function ConsumerLayout({
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
 
   const navItems = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'AI Chat', href: '/chat', icon: Brain },
-    { name: 'Fitness Analyst', href: '/fitness', icon: Dumbbell },
-    { name: 'Cooking Assistant', href: '/cooking', icon: ChefHat },
-    { name: 'Profile', href: '/profile', icon: UserIcon },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    { name: 'Dashboard',         href: '/consumer/dashboard', icon: LayoutDashboard },
+    { name: 'AI Chat',           href: '/consumer/chat',      icon: Brain },
+    { name: 'Fitness Analyst',   href: '/consumer/fitness',   icon: Dumbbell },
+    { name: 'Cooking Assistant', href: '/consumer/cooking',   icon: ChefHat },
+    { name: 'Profile',           href: '/consumer/profile',   icon: UserIcon },
+    { name: 'Settings',          href: '/consumer/settings',  icon: Settings },
   ];
 
   const isActive = (path: string) => pathname === path;
@@ -87,16 +87,16 @@ export default function ConsumerLayout({
                   <p className="text-sm font-bold text-[#004070]">{user?.full_name || 'Consumer User'}</p>
                   <p className="text-xs text-gray-400 capitalize">{user?.role || 'Consumer'}</p>
                 </div>
-                <Link 
-                  href="/profile" 
+                <Link
+                  href="/consumer/profile"
                   className="flex items-center space-x-3 px-4 py-3 text-sm text-gray-700 hover:bg-[#F0F9FF] transition-colors"
                   onClick={() => setIsProfileDropdownOpen(false)}
                 >
                   <UserIcon size={18} className="text-[#005596]" />
                   <span>Your Profile</span>
                 </Link>
-                <Link 
-                  href="/settings" 
+                <Link
+                  href="/consumer/settings"
                   className="flex items-center space-x-3 px-4 py-3 text-sm text-gray-700 hover:bg-[#F0F9FF] transition-colors"
                   onClick={() => setIsProfileDropdownOpen(false)}
                 >

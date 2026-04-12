@@ -1,58 +1,47 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthApi } from '../api/auth.api';
-import { User, AccountRole } from '@/shared/types';
+import { User } from '@/shared/types';
+import { TOKEN_KEYS, TokenRole } from '@/shared/api/base.api';
 
-export const useAuth = (requiredRole?: AccountRole) => {
-  const [user, setUser] = useState<User | null>(null);
+const LOGIN_PAGE: Record<TokenRole, string> = {
+  CONSUMER: '/consumer/login',
+  USER:     '/space/login',
+};
+
+export const useAuth = (requiredRole?: TokenRole) => {
+  const [user,    setUser]    = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+      const role  = requiredRole ?? 'CONSUMER';
+      const token = typeof window !== 'undefined'
+        ? localStorage.getItem(TOKEN_KEYS[role].access)
+        : null;
+
       if (!token) {
+        const loginPath = LOGIN_PAGE[role];
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-            // Redirect to appropriate login page based on required role
-            if (requiredRole === 'CONSUMER') {
-                router.push('/consumer/login');
-            } else if (requiredRole === 'USER') {
-                router.push('/user/login');
-            } else {
-                router.push('/login');
-            }
+          router.push(loginPath);
         }
         setLoading(false);
         return;
       }
 
       try {
-        const profile = await AuthApi.getProfile();
+        const profile = await AuthApi.getProfile(role);
+        // Nếu role không khớp, đẩy về trang login đúng
         if (requiredRole && profile.role !== requiredRole) {
-           // Redirect to appropriate login page for the required role
-           if (requiredRole === 'CONSUMER') {
-               router.push('/consumer/login');
-           } else if (requiredRole === 'USER') {
-               router.push('/user/login');
-           } else {
-               router.push('/login');
-           }
-           return;
+          router.push(LOGIN_PAGE[role]);
+          return;
         }
         setUser(profile);
-      } catch (err) {
-        console.error('Auth check failed:', err);
+      } catch {
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            // Redirect to appropriate login page based on required role
-            if (requiredRole === 'CONSUMER') {
-                router.push('/consumer/login');
-            } else if (requiredRole === 'USER') {
-                router.push('/user/login');
-            } else {
-                router.push('/login');
-            }
+          AuthApi.logout(role);
+          router.push(LOGIN_PAGE[role]);
         }
       } finally {
         setLoading(false);
@@ -63,9 +52,9 @@ export const useAuth = (requiredRole?: AccountRole) => {
   }, [router, requiredRole]);
 
   const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    router.push('/register');
+    const role = requiredRole ?? 'CONSUMER';
+    AuthApi.logout(role);
+    router.push(LOGIN_PAGE[role]);
   };
 
   return { user, loading, logout };

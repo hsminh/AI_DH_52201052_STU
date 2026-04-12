@@ -1,38 +1,32 @@
-import { AbstractApiClient } from '@/shared/api/base.api';
+import { AbstractApiClient, TokenRole } from '@/shared/api/base.api';
 import { LoginRequest, RegisterRequest, AuthResponse } from '../types';
 import { User } from '@/shared/types';
 
 export class AuthApi extends AbstractApiClient {
-  static async login(data: LoginRequest): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>('/accounts/login/', {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    this.setToken(response.access, response.refresh);
-    return response;
-  }
 
-  static async userLogin(data: LoginRequest): Promise<AuthResponse> {
-    const response = await this.request<AuthResponse>('/accounts/user/login/', {
-      method: 'POST',
-      headers: await this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    this.setToken(response.access, response.refresh);
-    return response;
-  }
-
+  /** Đăng nhập Consumer → lưu consumer_access_token */
   static async consumerLogin(data: LoginRequest): Promise<AuthResponse> {
     const response = await this.request<AuthResponse>('/accounts/consumer/login/', {
       method: 'POST',
-      headers: await this.getHeaders(),
+      headers: await this.getHeaders(false, 'CONSUMER'),
       body: JSON.stringify(data),
     });
-    this.setToken(response.access, response.refresh);
+    this.setToken(response.access, response.refresh, 'CONSUMER');
     return response;
   }
 
+  /** Đăng nhập User/Space → lưu user_access_token */
+  static async userLogin(data: LoginRequest): Promise<AuthResponse> {
+    const response = await this.request<AuthResponse>('/accounts/user/login/', {
+      method: 'POST',
+      headers: await this.getHeaders(false, 'USER'),
+      body: JSON.stringify(data),
+    });
+    this.setToken(response.access, response.refresh, 'USER');
+    return response;
+  }
+
+  /** Đăng ký tài khoản mới */
   static async register(data: RegisterRequest): Promise<User> {
     return this.request('/accounts/register/', {
       method: 'POST',
@@ -41,31 +35,17 @@ export class AuthApi extends AbstractApiClient {
     });
   }
 
-  static async getProfile(): Promise<User> {
-    return this.request('/accounts/profile/', {
-      method: 'GET',
-      headers: await this.getHeaders(),
-    });
+  /** Lấy thông tin người dùng hiện tại (tự phát hiện role từ URL) */
+  static async getProfile(role?: TokenRole): Promise<User> {
+    return this.request(
+      '/accounts/profile/',
+      { method: 'GET', headers: await this.getHeaders(false, role) },
+      role,
+    );
   }
 
-  static setToken(access: string, refresh: string) {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', access);
-      localStorage.setItem('refresh_token', refresh);
-    }
-  }
-
-  static clearToken() {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-    }
-  }
-
-  static getToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('access_token');
-    }
-    return null;
+  /** Đăng xuất theo role */
+  static logout(role: TokenRole) {
+    this.clearToken(role);
   }
 }

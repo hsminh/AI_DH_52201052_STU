@@ -20,7 +20,7 @@ export default function UserLoginPage() {
       const data = await AuthApi.userLogin({ username, password });
       
       // No need to verify role since backend already validates
-      router.push('/documents');
+      router.push('/space/documents');
     } catch (err: any) {
       setError('Invalid username or password');
     }

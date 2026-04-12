@@ -20,7 +20,7 @@ export default function ConsumerLoginPage() {
       const data = await AuthApi.consumerLogin({ username, password });
       
       // No need to verify role since backend already validates
-      router.push('/fitness');
+      router.push('/consumer/dashboard');
     } catch (err: any) {
       setError('Invalid username or password');
     }

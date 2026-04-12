@@ -233,7 +233,7 @@ export default function FitnessPage() {
             </div>
           </div>
           <div className="flex gap-4 items-center">
-            <Link href="/cooking">
+            <Link href="/consumer/cooking">
               <Button className="bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl shadow-md gap-2 h-12">
                 <ChefHat size={18} />
                 COOKING ASSISTANT
