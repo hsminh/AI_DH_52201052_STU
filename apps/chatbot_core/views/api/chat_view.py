@@ -80,8 +80,8 @@ class CookingAssistantView(APIView):
         if not user_input:
             return JsonResponse({"error": "No input provided"}, status=400)
 
-        recipe_type = DocumentType.objects.filter(name="Công thức nấu ăn").first()
-        context = RAGService.get_relevant_context(user_input, type_id=recipe_type.id if recipe_type else None)
+        # Removed direct SQL DB dependency for RAG context
+        context = RAGService.get_relevant_context(user_input, type_name="Công thức nấu ăn")
 
         system_prompt = COOKING_ASSISTANT_SYSTEM_PROMPT
         if context.strip():

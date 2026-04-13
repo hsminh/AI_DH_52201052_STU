@@ -47,9 +47,6 @@ def make_cache_key(food_name: str, analysis_type: str, profile_hash: str) -> str
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-# ──────────────────────────────────────────────────────────────
-# Sync LLM call (for food identification — small/fast)
-# ──────────────────────────────────────────────────────────────
 
 def call_llm_sync(messages: list, models: list) -> str:
     """
@@ -88,10 +85,6 @@ def call_llm_sync(messages: list, models: list) -> str:
     raise RuntimeError(f"All models failed. Last: {last_error}")
 
 
-# ──────────────────────────────────────────────────────────────
-# Bước 1a — Identify food from TEXT
-# ──────────────────────────────────────────────────────────────
-
 def identify_food_from_text(user_input: str) -> str:
     """
     Yêu cầu LLM xác định tên món ăn từ đoạn văn bản.
@@ -119,11 +112,6 @@ def identify_food_from_text(user_input: str) -> str:
     except Exception as exc:
         print(f"[Pipeline] identify_food_from_text error: {exc}")
         return user_input
-
-
-# ──────────────────────────────────────────────────────────────
-# Bước 1b — Identify food from IMAGE
-# ──────────────────────────────────────────────────────────────
 
 def identify_food_from_image(image_base64: str, content_type: str) -> str:
     """
@@ -154,11 +142,6 @@ def identify_food_from_image(image_base64: str, content_type: str) -> str:
     except Exception as exc:
         print(f"[Pipeline] identify_food_from_image error: {exc}")
         return "món ăn trong ảnh"
-
-
-# ──────────────────────────────────────────────────────────────
-# Bước 3 — Stream LLM và thu thập response
-# ──────────────────────────────────────────────────────────────
 
 def stream_and_collect(messages: list, models: list):
     """

@@ -25,7 +25,7 @@ export default function LoginPage() {
         router.push('/dashboard');
       }
     } catch (err: any) {
-      setError('Invalid username or password. Please try again.');
+      setError(err.message || 'Invalid username or password. Please try again.');
     } finally {
       setLoading(false);
     }

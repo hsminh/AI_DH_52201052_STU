@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from datetime import datetime, timedelta
 
 from django.http import StreamingHttpResponse, JsonResponse
@@ -164,39 +165,78 @@ class ImageAnalysisView(BaseFitnessView):
         def stream_generator():
             yield f"[PROFILE_DATA]{json.dumps({'weight': profile.weight, 'height': profile.height, 'age': profile.age, 'bmi': body_metrics['bmi'], 'status': body_metrics['status']})}[/PROFILE_DATA]"
 
-            food_name = identify_food_from_image(image_base64, content_type)
-            print(f"[ImageAnalysis] Identified food: '{food_name}'")
-            yield f"[FOOD_IDENTIFIED]{food_name}[/FOOD_IDENTIFIED]"
+            # 1. Search in vector database first
+            temp_image_path = f"media/temp_analysis_{request.user.id}.png"
+            with open(temp_image_path, "wb") as f:
+                f.write(image_bytes)
 
-            cache_key = make_cache_key(food_name, "image", profile_hash)
-            cached = HybridCacheService.get_exact(cache_key)
+            rag_context = ""
+            try:
+                # Use multimodal search to find relevant information
+                rag_context = RAGService.get_image_context(temp_image_path, type_name="Công thức nấu ăn", content_type=content_type)
+            except Exception as e:
+                print(f"[ImageAnalysis] RAG failed: {e}")
+            # Do NOT remove temp_image_path yet, we might need it for process_image below
 
-            if cached is None:
-                cached = HybridCacheService.get_semantic(food_name, "image", profile_hash)
+            if rag_context:
+                print(f"[ImageAnalysis] Vector DB match found. Using text model with context.")
+                # We use the existing analysis (rag_context) and a text model instead of vision
+                prompt = get_meal_tracking_prompt(
+                    user_input or "Hãy tóm tắt và phân tích món ăn này dựa trên dữ liệu có sẵn", 
+                    body_metrics,
+                    current_time=current_time_info,
+                    workout_data=None,
+                )
+                messages = [
+                    {"role": "system", "content": f"Dữ liệu chính xác từ cơ sở tri thức (hãy ưu tiên dữ liệu này): {rag_context}"},
+                    {"role": "user", "content": prompt}
+                ]
+                models = ["fast-text-combo", "text-smart-combo", "free-stack"]
+            else:
+                print("[ImageAnalysis] No vector DB match. Falling back to AI Vision.")
+                # Fallback: Let the AI identify and analyze the image itself
+                prompt = get_meal_tracking_prompt(
+                    user_input or "hãy nhận diện và phân tích món ăn trong ảnh này", body_metrics,
+                    current_time=current_time_info,
+                    workout_data=None,
+                )
+                image_content = [{"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{image_base64}"}}]
+                messages = [
+                    {"role": "user", "content": [{"type": "text", "text": prompt}] + image_content}
+                ]
+                models = ["fast-vision-combo", "vision-ultra-combo", "free-stack"]
 
-            if cached is not None:
-                yield "[CACHE_HIT]"
-                yield cached
-                return
-
-            prompt = get_meal_tracking_prompt(
-                user_input or food_name, body_metrics,
-                current_time=current_time_info,
-                workout_data=None,
-            )
-            image_content = [{"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{image_base64}"}}]
-            messages = self.build_messages_with_rag(food_name, prompt, extra_content=image_content)
-            models = ["fast-vision-combo", "vision-ultra-combo", "free-stack"]
-
+            full_payload = ""
             for item in stream_and_collect(messages, models):
                 if isinstance(item, tuple):
                     signal, payload = item
-                    if signal == "__FULL__" and payload and not payload.startswith("[ERROR]"):
-                        HybridCacheService.save(cache_key, food_name, "image", profile_hash, payload, request.user)
+                    if signal == "__FULL__":
+                        full_payload = payload
+                        if payload and not payload.startswith("[ERROR]"):
+                            # If we didn't find context initially, save this new identification to vector DB
+                            if not rag_context and os.path.exists(temp_image_path):
+                                try:
+                                    print(f"[ImageAnalysis] Saving new image analysis to vector DB...")
+                                    RAGService.process_image(
+                                        temp_image_path, 
+                                        type_name="Công thức nấu ăn", 
+                                        description=payload,
+                                        content_type=content_type
+                                    )
+                                except Exception as ve:
+                                    print(f"[ImageAnalysis] Failed to save vector: {ve}")
+
+                            # Handle caching (optional)
+                            # HybridCacheService.save(...)
+                        
                     elif signal == "__ERROR__":
                         yield f"[ERROR]Tất cả model thất bại. {payload}[/ERROR]"
                 else:
                     yield item
+
+            # Finally clean up the temp image
+            if os.path.exists(temp_image_path):
+                os.remove(temp_image_path)
 
         return StreamingHttpResponse(stream_generator(), content_type="text/plain")
 

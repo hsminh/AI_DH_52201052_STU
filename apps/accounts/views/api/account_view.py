@@ -62,6 +62,10 @@ class ConsumerLoginSerializer(TokenObtainPairSerializer):
         return data
 
 
+class LoginView(TokenObtainPairView):
+    permission_classes = [permissions.AllowAny]
+
+
 class UserLoginView(TokenObtainPairView):
     serializer_class = UserLoginSerializer
 
