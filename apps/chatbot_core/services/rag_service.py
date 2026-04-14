@@ -1,5 +1,8 @@
 import os
 import requests
+import uuid
+import csv
+import io
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -62,44 +65,152 @@ class RAGService:
     _chroma_db_dir = os.path.join(settings.BASE_DIR, "chroma_db")
 
     @classmethod
-    def get_image_context(cls, image_path, k=3, type_name=None, content_type="image/png"):
+    def get_image_context(cls, image_path, k=3, type_name=None, content_type="image/png", threshold=0.4):
         if not os.path.exists(cls._chroma_db_dir):
-            return ""
+            return "", []
 
         vectorstore = Chroma(
             persist_directory=cls._chroma_db_dir,
-            embedding_function=cls._embeddings # LangChain Chroma expects this, but we will pass query vector directly
+            embedding_function=cls._embeddings
         )
 
-        # Get multimodal embedding for the image
         try:
             query_vector = cls._multimodal_embeddings.get_image_embedding(image_path, content_type=content_type)
         except Exception as e:
             print(f"[RAG] Failed to get image embedding: {e}")
-            return ""
+            return "", []
 
         filter_dict = {}
         if type_name:
             filter_dict = {"document_type": str(type_name)}
 
-        # Perform similarity search using the image vector
-        results = vectorstore.similarity_search_by_vector(query_vector, k=k, filter=filter_dict if filter_dict else None)
-        context = "\n\n".join([doc.page_content for doc in results])
-        return context
+        try:
+            results = vectorstore._collection.query(
+                query_embeddings=[query_vector],
+                n_results=k,
+                where=filter_dict if filter_dict else None,
+                include=["documents", "distances"]
+            )
+        except Exception as e:
+            print(f"[RAG] Collection query failed: {e}")
+            return "", []
+
+        valid_results = []
+        valid_ids = []
+        if results and 'documents' in results and len(results['documents']) > 0:
+            docs = results['documents'][0]
+            distances = results['distances'][0]
+            ids = results.get('ids', [[]])[0]
+            for doc_text, dist, doc_id in zip(docs, distances, ids if len(ids) > 0 else [None]*len(docs)):
+                if dist <= threshold:
+                    valid_results.append(doc_text)
+                    if doc_id:
+                        valid_ids.append(doc_id)
+
+        if valid_results:
+            print(f"[RAG] Found {len(valid_results)} matches within threshold {threshold}")
+        else:
+            print(f"[RAG] No matches found within threshold {threshold}")
+
+        context = "\n\n".join(valid_results)
+        return context, valid_ids
+
+    @classmethod
+    def update_image_analysis(cls, image_path=None, correct_description="", type_name=None, content_type="image/png", vector_id=None):
+        if not os.path.exists(cls._chroma_db_dir):
+            os.makedirs(cls._chroma_db_dir)
+
+        vectorstore = Chroma(
+            persist_directory=cls._chroma_db_dir,
+            embedding_function=cls._embeddings
+        )
+
+        image_vector = None
+        if image_path:
+            try:
+                image_vector = cls._multimodal_embeddings.get_image_embedding(image_path, content_type=content_type)
+            except Exception as e:
+                print(f"[RAG] Failed to process image for update: {e}")
+                if not vector_id:
+                    return None
+
+        existing_id = vector_id
+        if not existing_id and image_vector:
+            filter_dict = {"document_type": str(type_name)} if type_name else None
+            results = vectorstore._collection.query(
+                query_embeddings=[image_vector],
+                n_results=1,
+                where=filter_dict,
+                include=["distances"]
+            )
+            if results and 'ids' in results and len(results['ids'][0]) > 0:
+                if results['distances'][0][0] < 0.1:
+                    existing_id = results['ids'][0][0]
+                    print(f"[RAG] Found existing entry {existing_id} by vector.")
+
+        metadata = {"description": correct_description}
+        if image_path:
+            metadata["source"] = image_path
+        if type_name:
+            metadata["document_type"] = str(type_name)
+
+        unique_id = existing_id or f"img_{uuid.uuid4().hex}"
+
+        try:
+            if image_vector:
+                vectorstore._collection.upsert(
+                    ids=[unique_id],
+                    embeddings=[image_vector],
+                    documents=[correct_description],
+                    metadatas=[metadata]
+                )
+            else:
+                vectorstore._collection.update(
+                    ids=[unique_id],
+                    documents=[correct_description],
+                    metadatas=[metadata]
+                )
+        except Exception as e:
+            print(f"[RAG] Chroma update/upsert failed: {e}")
+            return None
+
+        print(f"[RAG] Updated image analysis for {unique_id}")
+        return unique_id
+
+    @classmethod
+    def get_all_images(cls, type_name="Recipe"):
+        if not os.path.exists(cls._chroma_db_dir):
+            return []
+
+        vectorstore = Chroma(
+            persist_directory=cls._chroma_db_dir,
+            embedding_function=cls._embeddings
+        )
+
+        filter_dict = {"document_type": str(type_name)} if type_name else None
+        
+        data = vectorstore._collection.get(
+            where=filter_dict,
+            include=["documents", "metadatas"]
+        )
+        
+        results = []
+        if data and 'ids' in data:
+            for i in range(len(data['ids'])):
+                results.append({
+                    "id": data['ids'][i],
+                    "description": data['documents'][i],
+                    "metadata": data['metadatas'][i]
+                })
+        return results
 
     @classmethod
     def process_image(cls, image_path, type_name=None, description="", content_type="image/png"):
         if not os.path.exists(cls._chroma_db_dir):
             os.makedirs(cls._chroma_db_dir)
 
-        # Get multimodal embedding for the image
-        # If we already have a description, we just embed that description directly
-        # to save time and avoid re-running vision model.
         try:
-            if description:
-                image_vector = cls._multimodal_embeddings.get_text_embedding(description)
-            else:
-                image_vector = cls._multimodal_embeddings.get_image_embedding(image_path, content_type=content_type)
+            image_vector = cls._multimodal_embeddings.get_image_embedding(image_path, content_type=content_type)
         except Exception as e:
             print(f"[RAG] Failed to process image: {e}")
             return None
@@ -113,14 +224,15 @@ class RAGService:
         if type_name:
             metadata["document_type"] = str(type_name)
 
-        # Add image to vector store
+        unique_id = f"img_{uuid.uuid4().hex}"
+
         vectorstore.add_texts(
             texts=[description or f"Image: {os.path.basename(image_path)}"],
             embeddings=[image_vector],
             metadatas=[metadata],
-            ids=[f"img_{os.path.basename(image_path)}_{os.getpid()}"]
+            ids=[unique_id]
         )
-        return vectorstore
+        return unique_id
 
     @classmethod
     def process_document(cls, file_path, type_name=None):

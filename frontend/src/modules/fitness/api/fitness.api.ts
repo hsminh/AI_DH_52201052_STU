@@ -28,4 +28,13 @@ export class FitnessApi extends AbstractApiClient {
       onChunk(fullText);
     });
   }
+
+  static async correctImage(data: FormData) {
+    const headers = await this.getHeaders(true); // true for Multipart (FormData)
+    return this.request('/fitness/correct-image/', {
+      method: 'POST',
+      headers,
+      body: data
+    });
+  }
 }

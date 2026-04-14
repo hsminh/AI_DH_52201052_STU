@@ -23,7 +23,9 @@ import {
   Clock,
   ArrowRight,
   ChevronRight,
-  Target
+  Target,
+  Edit2,
+  Save
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,6 +48,11 @@ export default function FitnessPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [vectorId, setVectorId] = useState<string | null>(null);
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  const [correctedFoodName, setCorrectedFoodName] = useState('');
+  const [correctedDescription, setCorrectedDescription] = useState('');
+  const [isUpdatingCorrection, setIsUpdatingCorrection] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const runTextAnalysis = useCallback(async (text: string) => {
@@ -67,7 +74,6 @@ export default function FitnessPage() {
     const q = searchParams.get('q');
     if (q) {
       runTextAnalysis(q);
-      // Clear URL param after use
       router.replace('/fitness');
     }
   }, [searchParams, runTextAnalysis, router]);
@@ -151,7 +157,11 @@ export default function FitnessPage() {
   };
 
   const processStream = (text: string) => {
-    // Extract profile data
+    const vectorIdMatch = text.match(/\[VECTOR_ID\]([\s\S]*?)\[\/VECTOR_ID\]/);
+    if (vectorIdMatch) {
+      setVectorId(vectorIdMatch[1]);
+    }
+
     const profileMatch = text.match(/\[PROFILE_DATA\]([\s\S]*?)\[\/PROFILE_DATA\]/);
     if (profileMatch) {
       try {
@@ -159,14 +169,12 @@ export default function FitnessPage() {
       } catch (e) {}
     }
 
-    // Try to find JSON block
     let jsonDataStr = "";
     const jsonMarkdownMatch = text.match(/```json([\s\S]*?)```/);
     
     if (jsonMarkdownMatch) {
       jsonDataStr = jsonMarkdownMatch[1];
     } else {
-      // If no markdown, look for first { and last }
       const firstBrace = text.indexOf('{', text.indexOf('[/PROFILE_DATA]'));
       const lastBrace = text.lastIndexOf('}');
       if (firstBrace !== -1 && lastBrace > firstBrace) {
@@ -178,13 +186,44 @@ export default function FitnessPage() {
       try {
         const parsed = JSON.parse(jsonDataStr);
         setFullData(parsed);
-        // Tự động mở modal khi có dữ liệu ổn định
         if (parsed.identified_food) {
           setIsModalOpen(true);
         }
-      } catch (err) {
-        // Có thể JSON chưa hoàn thiện do đang stream, bỏ qua
+      } catch (err) {}
+    }
+  };
+
+  const handleCorrection = async () => {
+    if (!correctedFoodName.trim()) {
+      alert("Please enter the food name");
+      return;
+    }
+    if (!vectorId) {
+      alert("Vector ID not found for update");
+      return;
+    }
+    
+    setIsUpdatingCorrection(true);
+    try {
+      const formData = new FormData();
+      if (image) formData.append('image', image);
+      
+      const finalDescription = `Food Name: ${correctedFoodName}\n\nDetailed Description: ${correctedDescription || fullData.summary}`;
+      formData.append('correct_description', finalDescription);
+      formData.append('vector_id', vectorId);
+
+      const response = await FitnessApi.correctImage(formData);
+      if (response) {
+        setFullData({ ...fullData, identified_food: correctedFoodName, summary: correctedDescription || fullData.summary });
+        alert("Information updated successfully!");
+        setIsCorrecting(false);
       }
+    } catch (error: any) {
+      console.error('Correction failed:', error);
+      const errorMsg = error.response?.data?.error || error.message || "Update failed, please try again";
+      alert(`Error: ${errorMsg}`);
+    } finally {
+      setIsUpdatingCorrection(false);
     }
   };
 
@@ -213,11 +252,10 @@ export default function FitnessPage() {
 
   return (
     <div className="p-4 md:p-8 relative min-h-full">
-      {/* Loading Overlay */}
       {loading && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[9999] flex flex-col items-center justify-center space-y-4">
           <Loader2 className="w-16 h-16 text-white animate-spin" />
-          <p className="text-white text-xl font-medium animate-pulse tracking-wide">AI đang phân tích món ăn...</p>
+          <p className="text-white text-xl font-medium animate-pulse tracking-wide">AI analyzing meal...</p>
         </div>
       )}
 
@@ -259,16 +297,16 @@ export default function FitnessPage() {
             <CardHeader className="bg-[#F0F9FF] border-b border-[#A3DAFF]/20 py-8">
               <CardTitle className="text-[#004070] flex items-center justify-center gap-3 text-2xl font-black">
                 <Sparkles size={24} className="text-[#A3DAFF]" />
-                NHẬN DIỆN DINH DƯỠNG
+                NUTRITION IDENTIFICATION
               </CardTitle>
               <CardDescription className="text-center font-medium text-gray-500">
-                Chụp ảnh hoặc mô tả bữa ăn của bạn để AI phân tích
+                Capture photo or describe your meal for AI analysis
               </CardDescription>
             </CardHeader>
             <CardContent className="p-8 space-y-8">
               <div className="relative group">
                 <Textarea
-                  placeholder="Hôm nay bạn đã ăn gì? (VD: 1 bát phở bò, 2 lát bánh mì đen...)"
+                  placeholder="What did you eat today? (e.g., 1 bowl of beef pho, 2 slices of brown bread...)"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   className="min-h-[180px] border-2 border-[#A3DAFF]/30 focus:border-[#A3DAFF] focus:ring-0 text-xl rounded-[32px] p-6 resize-none transition-all bg-gray-50/30"
@@ -283,11 +321,11 @@ export default function FitnessPage() {
                   <input type="file" id="file-upload" accept="image/*" onChange={handleFileChange} className="hidden" />
                   <Button variant="outline" onClick={() => document.getElementById('file-upload')?.click()} className="flex-1 rounded-2xl border-[#A3DAFF] text-[#005596] hover:bg-[#F0F9FF] h-14 px-6 font-bold">
                     <Upload size={20} className="mr-2" />
-                    TẢI ẢNH
+                    UPLOAD
                   </Button>
                   <Button variant="outline" onClick={startCamera} className="flex-1 rounded-2xl border-[#A3DAFF] text-[#005596] hover:bg-[#F0F9FF] h-14 px-6 font-bold">
                     <Camera size={20} className="mr-2" />
-                    MÁY ẢNH
+                    CAMERA
                   </Button>
                 </div>
                 
@@ -296,7 +334,7 @@ export default function FitnessPage() {
                   disabled={(!input.trim() && !image) || loading}
                   className="w-full sm:w-auto sm:ml-auto bg-[#004070] text-white hover:bg-[#005596] font-black px-12 h-14 rounded-2xl shadow-xl hover:-translate-y-1 transition-all disabled:opacity-50 disabled:translate-y-0"
                 >
-                  PHÂN TÍCH NGAY
+                  ANALYZE NOW
                 </Button>
               </div>
 
@@ -318,20 +356,18 @@ export default function FitnessPage() {
               <div className="bg-[#A3DAFF]/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Target size={32} className="text-[#A3DAFF]" />
               </div>
-              <h3 className="text-xl font-bold text-[#004070]">Sẵn sàng phân tích</h3>
-              <p className="text-gray-400 max-w-xs mx-auto">Thông tin dinh dưỡng và gợi ý từ AI sẽ hiển thị tại đây sau khi bạn gửi dữ liệu.</p>
+              <h3 className="text-xl font-bold text-[#004070]">Ready to analyze</h3>
+              <p className="text-gray-400 max-w-xs mx-auto">Nutrition info and AI suggestions will appear here after analysis.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Analysis Result MODAL */}
       {isModalOpen && fullData && (
         <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
           <div className="fixed inset-0 bg-black/30" onClick={() => setIsModalOpen(false)}></div>
           
           <div className="bg-[#F8FAFC] w-full max-w-[95vw] max-h-[95vh] overflow-y-auto rounded-[40px] shadow-2xl relative z-10 border border-white/20">
-            {/* Modal Close */}
             <button 
               onClick={() => setIsModalOpen(false)}
               className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors z-20"
@@ -339,7 +375,6 @@ export default function FitnessPage() {
               <X size={20} />
             </button>
 
-            {/* Modal Header Banner */}
             <div className="bg-[#004070] p-6 md:p-8 text-white relative overflow-hidden">
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -375,32 +410,39 @@ export default function FitnessPage() {
             </div>
 
             <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Details */}
               <div className="lg:col-span-8 space-y-6">
                 <section className="space-y-4">
                   <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Lightbulb size={14} className="text-yellow-500" /> Gợi ý thực đơn hôm nay
+                    <Lightbulb size={14} className="text-yellow-500" /> ANALYSIS DETAILS
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                    {Object.entries(fullData.consumed || {}).map(([key, meal]: any) => (
-                      <div key={key} className={`p-6 rounded-[32px] border transition-all ${meal.calories > 0 ? 'bg-white border-[#A3DAFF]/40 shadow-md ring-4 ring-[#A3DAFF]/5' : 'bg-gray-100/50 border-gray-200'}`}>
-                        <div className="flex items-center justify-between mb-4">
-                          <span className={`text-[12px] font-black uppercase px-3 py-1 rounded-full ${meal.calories > 0 ? 'bg-[#F0F9FF] text-[#005596]' : 'bg-gray-200 text-gray-500'}`}>{key}</span>
-                          {meal.calories > 0 && <CheckCircle2 size={20} className="text-green-500" />}
-                        </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {fullData.consumed && Object.entries(fullData.consumed).map(([key, meal]: any) => (
+                      <div key={key} className="bg-white border border-[#A3DAFF]/40 rounded-[32px] p-6 shadow-md hover:shadow-lg transition-all border-b-4">
                         <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-black text-[#004070] text-lg uppercase tracking-tight">{key}</h4>
+                            <div className="bg-[#F0F9FF] px-3 py-1 rounded-full border border-[#A3DAFF]/30">
+                              <span className="text-[#005596] font-black text-xs">{meal.calories} kcal</span>
+                            </div>
+                          </div>
+                          
                           {meal.calories > 0 && (
-                            <div className="space-y-2">
-                              <p className="text-3xl font-black text-[#004070]">{meal.calories} <small className="text-[12px] font-bold text-gray-400 uppercase">KCAL</small></p>
-                              <div className="space-y-1.5 pt-2 border-t border-gray-50">
-                                <p className="text-[13px] font-bold text-[#005596] flex justify-between"><span>Đạm:</span> <span>{meal.protein}g</span></p>
-                                <p className="text-[13px] font-bold text-[#005596] flex justify-between"><span>Tinh bột:</span> <span>{meal.carbs}g</span></p>
-                                <p className="text-[13px] font-bold text-[#005596] flex justify-between"><span>Chất béo:</span> <span>{meal.fat}g</span></p>
-                              </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[
+                                { label: 'Prot', val: meal.protein, color: 'bg-[#005596]' },
+                                { label: 'Carb', val: meal.carbs, color: 'bg-[#87C6EE]' },
+                                { label: 'Fat', val: meal.fat, color: 'bg-[#A3DAFF]' }
+                              ].map(m => (
+                                <div key={m.label} className="bg-gray-50 rounded-2xl p-2 text-center border border-gray-100">
+                                  <p className="text-[9px] font-black text-gray-400 uppercase mb-1">{m.label}</p>
+                                  <p className="text-sm font-black text-[#004070]">{m.val}g</p>
+                                  <div className={`h-1 w-full ${m.color} rounded-full mt-1.5 opacity-60`}></div>
+                                </div>
+                              ))}
                             </div>
                           )}
                           <div className={`space-y-2 ${meal.calories > 0 ? 'pt-3 border-t-2 border-dashed border-[#A3DAFF]/30' : ''}`}>
-                            <p className="text-[11px] font-black text-[#A3DAFF] uppercase tracking-wider">Gợi ý phân tích tiếp:</p>
+                            <p className="text-[11px] font-black text-[#A3DAFF] uppercase tracking-wider">NEXT ANALYSIS:</p>
                             <div className="flex flex-wrap gap-1.5">
                               {meal.suggestion.split(',').map((dish: string) => (
                                 <button
@@ -423,7 +465,7 @@ export default function FitnessPage() {
                 {fullData.cooking_instructions && fullData.cooking_instructions.length > 0 && (
                   <section className="space-y-4">
                     <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <CookingPot size={14} className="text-orange-500" /> Cách nấu món ăn này
+                      <CookingPot size={14} className="text-orange-500" /> RECIPE
                     </h3>
                     <div className="bg-white border border-[#A3DAFF]/40 rounded-[32px] p-6 md:p-8 shadow-md">
                       <div className="space-y-4">
@@ -442,7 +484,7 @@ export default function FitnessPage() {
 
                 <section className="space-y-3">
                   <h3 className="text-[12px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Info size={16} className="text-[#A3DAFF]" /> Nhận xét chuyên gia
+                    <Info size={16} className="text-[#A3DAFF]" /> SUMMARY
                   </h3>
                   <div className="bg-white p-5 rounded-[24px] border border-[#A3DAFF]/20 shadow-sm relative">
                     <p className="text-base text-[#004070] font-medium leading-relaxed italic">
@@ -452,20 +494,19 @@ export default function FitnessPage() {
                 </section>
               </div>
 
-              {/* Right Column: Macro & Workout */}
               <div className="lg:col-span-4 space-y-6">
                 <section className="bg-white p-7 rounded-[32px] border border-[#A3DAFF]/20 shadow-lg flex flex-col items-center">
-                  <h3 className="text-[11px] font-black text-[#004070] uppercase tracking-widest mb-4">Tỷ lệ dinh dưỡng</h3>
+                  <h3 className="text-[11px] font-black text-[#004070] uppercase tracking-widest mb-4">NUTRITION RATIO</h3>
                   <div className="relative w-full max-w-[180px] mb-5">
                     <Pie data={getPieData() as any} options={{ cutout: '75%', plugins: { legend: { display: false } } }} />
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                       <span className="text-3xl font-black text-[#004070] leading-none">{getTotalCalories()}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Calo</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">CALO</span>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-3 w-full gap-2">
-                    {['Đạm', 'Tinh bột', 'Chất béo'].map((label, i) => {
+                    {['Protein', 'Carbs', 'Fat'].map((label, i) => {
                       const colors = ['#005596', '#87C6EE', '#A3DAFF'];
                       return (
                         <div key={label} className="text-center">
@@ -481,13 +522,13 @@ export default function FitnessPage() {
                   <section className="bg-[#004070] text-white rounded-[32px] shadow-xl overflow-hidden border-none p-6 space-y-4 relative">
                     <div className="flex items-center gap-2 text-lg font-black italic">
                       <Activity className="text-[#A3DAFF]" size={20} />
-                      TẬP LUYỆN
+                      WORKOUT
                     </div>
                     
                     <div className="space-y-3 relative z-10">
                       <div className="bg-white/10 rounded-2xl p-3 border border-white/10 backdrop-blur-sm">
                         <p className="text-lg font-black leading-tight">{fullData.activity_recommendation.type}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-tighter text-[#A3DAFF]">Cường độ: {fullData.activity_recommendation.intensity}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-tighter text-[#A3DAFF]">Intensity: {fullData.activity_recommendation.intensity}</p>
                       </div>
                       
                       <div className="space-y-2">
@@ -506,20 +547,31 @@ export default function FitnessPage() {
               </div>
             </div>
             
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-gray-100 flex justify-center bg-white/50">
+            <div className="p-4 border-t border-gray-100 flex justify-center gap-3 bg-white/50">
+              {vectorId && (
+                <Button 
+                  onClick={() => {
+                    setCorrectedFoodName(fullData.identified_food);
+                    setCorrectedDescription(fullData.summary || "");
+                    setIsCorrecting(true);
+                  }}
+                  className="bg-red-500 hover:bg-red-600 text-white font-black px-8 h-10 rounded-xl shadow-sm text-xs gap-2"
+                >
+                  <Edit2 size={14} />
+                  CORRECT INFO
+                </Button>
+              )}
               <Button 
                 onClick={() => setIsModalOpen(false)}
                 className="bg-[#004070] text-white hover:bg-[#005596] font-black px-8 h-10 rounded-xl shadow-sm text-xs"
               >
-                ĐÃ HIỂU
+                GOT IT
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Camera Modal */}
       {showCamera && (
         <div className="fixed inset-0 z-[10000] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4">
           <div className="relative w-full max-w-2xl aspect-video bg-gray-900 rounded-[40px] overflow-hidden border-4 border-[#A3DAFF] shadow-2xl">
@@ -541,6 +593,82 @@ export default function FitnessPage() {
             </div>
           </div>
           <p className="text-white/50 text-sm mt-6 font-medium">Position your meal in the center of the frame</p>
+        </div>
+      )}
+
+      {isCorrecting && (
+        <div className="fixed inset-0 z-[10002] flex justify-end animate-in fade-in duration-300">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsCorrecting(false)}></div>
+          <div className="bg-white w-full max-w-md h-full relative z-10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
+            <div className="bg-[#004070] p-6 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <Edit2 size={20} className="text-[#A3DAFF]" />
+                <h3 className="text-xl font-black uppercase tracking-tight">Correct Info</h3>
+              </div>
+              <button onClick={() => setIsCorrecting(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-8 space-y-8">
+              <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200">
+                 <p className="text-xs font-bold text-orange-700 flex items-center gap-2">
+                    <Info size={14} /> NOTE
+                 </p>
+                 <p className="text-[11px] text-orange-600 mt-1 font-medium leading-relaxed">
+                    The corrected info will be remembered by AI for better future identification.
+                 </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Correct Food Name</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={correctedFoodName}
+                    onChange={(e) => setCorrectedFoodName(e.target.value)}
+                    className="w-full bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl px-5 py-4 font-bold text-[#004070] focus:border-[#004070] focus:bg-white outline-none transition-all text-lg"
+                    placeholder="e.g., Beef Pho..."
+                  />
+                  <Utensils className="absolute right-5 top-4.5 text-[#A3DAFF] opacity-30" size={24} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Re-describe Meal</label>
+                <textarea
+                  value={correctedDescription}
+                  onChange={(e) => setCorrectedDescription(e.target.value)}
+                  className="w-full bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl px-5 py-4 font-medium text-gray-600 focus:border-[#004070] focus:bg-white outline-none transition-all min-h-[220px] resize-none text-sm leading-relaxed"
+                  placeholder="Enter detailed ingredients, nutrients or cooking method..."
+                />
+              </div>
+            </div>
+
+            <div className="p-6 bg-gray-50 border-t border-gray-100 grid grid-cols-2 gap-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsCorrecting(false)} 
+                className="rounded-2xl h-14 font-bold border-2 border-gray-200 text-gray-400 hover:bg-gray-100"
+              >
+                CANCEL
+              </Button>
+              <Button 
+                onClick={handleCorrection} 
+                disabled={isUpdatingCorrection}
+                className="bg-[#004070] hover:bg-[#005596] text-white rounded-2xl h-14 font-black shadow-xl flex items-center justify-center gap-2"
+              >
+                {isUpdatingCorrection ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <>
+                    <Save size={18} />
+                    UPDATE
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
