@@ -148,6 +148,7 @@ class ImageAnalysisView(BaseFitnessView):
     def post(self, request):
         user_input = request.data.get("user_input", "").strip()
         image_file = request.FILES.get("image")
+        vector_id_to_override = request.data.get("vector_id", "").strip()
 
         if not image_file:
             return JsonResponse({"error": "No image provided"}, status=400)
@@ -214,14 +215,16 @@ class ImageAnalysisView(BaseFitnessView):
                     if signal == "__FULL__":
                         full_payload = payload
                         if payload and not payload.startswith("[ERROR]"):
-                            if not rag_context and os.path.exists(temp_image_path):
+                            # Always save/override if vector_id_to_override is provided OR if it's a new image (no rag_context)
+                            if (vector_id_to_override or not rag_context) and os.path.exists(temp_image_path):
                                 try:
-                                    print(f"[ImageAnalysis] Saving new image analysis to vector DB...")
+                                    print(f"[ImageAnalysis] Saving image analysis to vector DB (Override: {vector_id_to_override or 'New'})...")
                                     unique_id = RAGService.process_image(
                                         temp_image_path, 
                                         type_name="Recipe", 
                                         description=payload,
-                                        content_type=content_type
+                                        content_type=content_type,
+                                        vector_id=vector_id_to_override
                                     )
                                     if unique_id:
                                         yield f"[VECTOR_ID]{unique_id}[/VECTOR_ID]"

@@ -66,7 +66,7 @@ class MultimodalEmbeddingService:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Describe this image in detail for semantic search indexing. Focus on identifying objects, colors, and layout."},
+                        {"type": "text", "text": "Describe this food/dish image in extreme detail for semantic search indexing. Identify exact ingredients, textures, branding/labels if visible, and unique visual features. If it's a packaged food, name the brand. Be specific to differentiate it from similar items."},
                         {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{image_base64}"}}
                     ]
                 }

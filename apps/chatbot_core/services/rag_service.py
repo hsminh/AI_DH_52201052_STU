@@ -65,7 +65,7 @@ class RAGService:
     _chroma_db_dir = os.path.join(settings.BASE_DIR, "chroma_db")
 
     @classmethod
-    def get_image_context(cls, image_path, k=3, type_name=None, content_type="image/png", threshold=0.4):
+    def get_image_context(cls, image_path, k=3, type_name=None, content_type="image/png", threshold=0.18):
         if not os.path.exists(cls._chroma_db_dir):
             return "", []
 
@@ -205,7 +205,7 @@ class RAGService:
         return results
 
     @classmethod
-    def process_image(cls, image_path, type_name=None, description="", content_type="image/png"):
+    def process_image(cls, image_path, type_name=None, description="", content_type="image/png", vector_id=None):
         if not os.path.exists(cls._chroma_db_dir):
             os.makedirs(cls._chroma_db_dir)
 
@@ -224,14 +224,19 @@ class RAGService:
         if type_name:
             metadata["document_type"] = str(type_name)
 
-        unique_id = f"img_{uuid.uuid4().hex}"
+        unique_id = vector_id or f"img_{uuid.uuid4().hex}"
 
-        vectorstore.add_texts(
-            texts=[description or f"Image: {os.path.basename(image_path)}"],
-            embeddings=[image_vector],
-            metadatas=[metadata],
-            ids=[unique_id]
-        )
+        try:
+            vectorstore._collection.upsert(
+                ids=[unique_id],
+                embeddings=[image_vector],
+                documents=[description or f"Image: {os.path.basename(image_path)}"],
+                metadatas=[metadata]
+            )
+        except Exception as e:
+            print(f"[RAG] Failed to save/upsert image: {e}")
+            return None
+
         return unique_id
 
     @classmethod

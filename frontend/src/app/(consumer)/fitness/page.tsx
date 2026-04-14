@@ -25,11 +25,23 @@ import {
   ChevronRight,
   Target,
   Edit2,
-  Save
+  Save,
+  Link as LinkIcon,
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { 
+  Sheet, 
+  SheetContent, 
+  SheetDescription, 
+  SheetHeader, 
+  SheetTitle,
+  SheetFooter
+} from "@/components/ui/sheet";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -49,10 +61,15 @@ export default function FitnessPage() {
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [vectorId, setVectorId] = useState<string | null>(null);
-  const [isCorrecting, setIsCorrecting] = useState(false);
+  
+  // Correction Sheet states
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [correctionMode, setCorrectionMode] = useState<'text' | 'link' | 'ai'>('text');
   const [correctedFoodName, setCorrectedFoodName] = useState('');
   const [correctedDescription, setCorrectedDescription] = useState('');
+  const [correctedLink, setCorrectedLink] = useState('');
   const [isUpdatingCorrection, setIsUpdatingCorrection] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const runTextAnalysis = useCallback(async (text: string) => {
@@ -136,19 +153,20 @@ export default function FitnessPage() {
     }
   };
 
-  const startAnalysis = async () => {
+  const startAnalysis = async (customInput?: string, overrideVectorId?: string) => {
     setLoading(true);
     setFullData(null);
 
     const formData = new FormData();
-    formData.append('user_input', input);
+    formData.append('user_input', customInput || input);
     if (image) formData.append('image', image);
+    if (overrideVectorId) formData.append('vector_id', overrideVectorId);
 
     try {
       if (image) {
         await FitnessApi.analyzeImage(formData, processStream);
       } else {
-        await FitnessApi.analyzeText({ user_input: input }, processStream);
+        await FitnessApi.analyzeText({ user_input: customInput || input }, processStream);
       }
     } catch (error) {
       console.error('Analysis failed:', error);
@@ -198,6 +216,14 @@ export default function FitnessPage() {
       alert("Please enter the food name");
       return;
     }
+
+    if (correctionMode === 'ai') {
+      setIsSheetOpen(false);
+      setIsModalOpen(false);
+      startAnalysis(correctedFoodName, vectorId || undefined);
+      return;
+    }
+
     if (!vectorId) {
       alert("Vector ID not found for update");
       return;
@@ -208,7 +234,13 @@ export default function FitnessPage() {
       const formData = new FormData();
       if (image) formData.append('image', image);
       
-      const finalDescription = `Food Name: ${correctedFoodName}\n\nDetailed Description: ${correctedDescription || fullData.summary}`;
+      let finalDescription = `Food Name: ${correctedFoodName}\n\n`;
+      if (correctionMode === 'link') {
+        finalDescription += `Reference Link: ${correctedLink}\n\nManual Context: ${correctedDescription}`;
+      } else {
+        finalDescription += `Detailed Description: ${correctedDescription || (fullData?.summary || "")}`;
+      }
+      
       formData.append('correct_description', finalDescription);
       formData.append('vector_id', vectorId);
 
@@ -216,7 +248,7 @@ export default function FitnessPage() {
       if (response) {
         setFullData({ ...fullData, identified_food: correctedFoodName, summary: correctedDescription || fullData.summary });
         alert("Information updated successfully!");
-        setIsCorrecting(false);
+        setIsSheetOpen(false);
       }
     } catch (error: any) {
       console.error('Correction failed:', error);
@@ -330,7 +362,7 @@ export default function FitnessPage() {
                 </div>
                 
                 <Button 
-                  onClick={startAnalysis} 
+                  onClick={() => startAnalysis()} 
                   disabled={(!input.trim() && !image) || loading}
                   className="w-full sm:w-auto sm:ml-auto bg-[#004070] text-white hover:bg-[#005596] font-black px-12 h-14 rounded-2xl shadow-xl hover:-translate-y-1 transition-all disabled:opacity-50 disabled:translate-y-0"
                 >
@@ -386,7 +418,22 @@ export default function FitnessPage() {
                       <span className="bg-[#A3DAFF] text-[#004070] text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest">{fullData.current_meal_type}</span>
                       <span className="text-white/50 text-[10px] font-bold uppercase tracking-tighter">Detected Meal</span>
                     </div>
-                    <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">{fullData.identified_food}</h2>
+                    <div className="flex items-center gap-4">
+                      <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">{fullData.identified_food}</h2>
+                      {vectorId && (
+                        <Button 
+                          onClick={() => {
+                            setCorrectedFoodName(fullData.identified_food);
+                            setCorrectedDescription(fullData.summary || "");
+                            setIsSheetOpen(true);
+                          }}
+                          className="bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl px-4 h-9 text-[10px] font-black gap-2 backdrop-blur-sm"
+                        >
+                          <Edit2 size={12} className="text-[#A3DAFF]" />
+                          SỬA LẠI
+                        </Button>
+                      )}
+                    </div>
                     {fullData.timing_assessment && (
                       <div className={`mt-2 p-3 rounded-2xl flex items-start gap-3 border ${fullData.timing_assessment.is_suitable ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
                         <div className={`p-1 rounded-full ${fullData.timing_assessment.is_suitable ? 'bg-green-500' : 'bg-red-500'}`}>
@@ -462,23 +509,71 @@ export default function FitnessPage() {
                   </div>
                 </section>
 
-                {fullData.cooking_instructions && fullData.cooking_instructions.length > 0 && (
-                  <section className="space-y-4">
-                    <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <CookingPot size={14} className="text-orange-500" /> RECIPE
-                    </h3>
-                    <div className="bg-white border border-[#A3DAFF]/40 rounded-[32px] p-6 md:p-8 shadow-md">
-                      <div className="space-y-4">
-                        {fullData.cooking_instructions.map((step: string, i: number) => (
-                          <div key={i} className="flex items-start gap-4">
-                            <div className="bg-[#F0F9FF] text-[#005596] w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-black text-sm border border-[#A3DAFF]/40">
-                              {i + 1}
-                            </div>
-                            <p className="text-sm font-medium text-gray-600 leading-relaxed pt-1.5">{step}</p>
-                          </div>
-                        ))}
-                      </div>
+                {fullData.cooking_instructions && (
+                  <section className="space-y-6">
+                    <div className="flex items-center gap-3 border-b border-[#A3DAFF]/20 pb-2">
+                      <CookingPot size={20} className="text-orange-500" />
+                      <h3 className="text-sm font-black text-[#004070] uppercase tracking-widest">
+                        CÁCH CHẾ BIẾN & THÀNH PHẦN
+                      </h3>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Ingredients Section */}
+                      {fullData.cooking_instructions.ingredients && fullData.cooking_instructions.ingredients.length > 0 && (
+                        <div className="bg-white border border-[#A3DAFF]/40 rounded-[32px] p-6 shadow-md">
+                          <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <Utensils size={14} className="text-[#005596]" /> THÀNH PHẦN CHÍNH
+                          </h4>
+                          <div className="space-y-3">
+                            {fullData.cooking_instructions.ingredients.map((ing: string, i: number) => (
+                              <div key={i} className="flex items-center gap-3 text-sm font-medium text-gray-600">
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#A3DAFF]"></div>
+                                {ing}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Steps Section */}
+                      {fullData.cooking_instructions.steps && fullData.cooking_instructions.steps.length > 0 && (
+                        <div className="bg-white border border-[#A3DAFF]/40 rounded-[32px] p-6 shadow-md">
+                          <h4 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <ChefHat size={14} className="text-orange-500" /> CÁC BƯỚC THỰC HIỆN
+                          </h4>
+                          <div className="space-y-4">
+                            {fullData.cooking_instructions.steps.map((step: string, i: number) => (
+                              <div key={i} className="flex items-start gap-4">
+                                <div className="bg-[#F0F9FF] text-[#005596] w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-black text-[10px] border border-[#A3DAFF]/40">
+                                  {i + 1}
+                                </div>
+                                <p className="text-xs font-medium text-gray-600 leading-relaxed pt-1">{step}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {(fullData.cooking_instructions.prep_time || fullData.cooking_instructions.cook_time) && (
+                      <div className="flex gap-4">
+                        {fullData.cooking_instructions.prep_time && (
+                          <div className="bg-white border border-[#A3DAFF]/20 rounded-2xl px-4 py-2 flex items-center gap-2 shadow-sm">
+                            <Timer size={14} className="text-blue-500" />
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Sơ chế:</span>
+                            <span className="text-xs font-black text-[#004070]">{fullData.cooking_instructions.prep_time}</span>
+                          </div>
+                        )}
+                        {fullData.cooking_instructions.cook_time && (
+                          <div className="bg-white border border-[#A3DAFF]/20 rounded-2xl px-4 py-2 flex items-center gap-2 shadow-sm">
+                            <Clock size={14} className="text-orange-500" />
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Nấu:</span>
+                            <span className="text-xs font-black text-[#004070]">{fullData.cooking_instructions.cook_time}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -548,24 +643,11 @@ export default function FitnessPage() {
             </div>
             
             <div className="p-4 border-t border-gray-100 flex justify-center gap-3 bg-white/50">
-              {vectorId && (
-                <Button 
-                  onClick={() => {
-                    setCorrectedFoodName(fullData.identified_food);
-                    setCorrectedDescription(fullData.summary || "");
-                    setIsCorrecting(true);
-                  }}
-                  className="bg-red-500 hover:bg-red-600 text-white font-black px-8 h-10 rounded-xl shadow-sm text-xs gap-2"
-                >
-                  <Edit2 size={14} />
-                  CORRECT INFO
-                </Button>
-              )}
               <Button 
                 onClick={() => setIsModalOpen(false)}
-                className="bg-[#004070] text-white hover:bg-[#005596] font-black px-8 h-10 rounded-xl shadow-sm text-xs"
+                className="bg-[#004070] text-white hover:bg-[#005596] font-black px-12 h-12 rounded-2xl shadow-sm text-sm"
               >
-                GOT IT
+                ĐÃ HIỂU
               </Button>
             </div>
           </div>
@@ -596,81 +678,127 @@ export default function FitnessPage() {
         </div>
       )}
 
-      {isCorrecting && (
-        <div className="fixed inset-0 z-[10002] flex justify-end animate-in fade-in duration-300">
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsCorrecting(false)}></div>
-          <div className="bg-white w-full max-w-md h-full relative z-10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
-            <div className="bg-[#004070] p-6 text-white flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <Edit2 size={20} className="text-[#A3DAFF]" />
-                <h3 className="text-xl font-black uppercase tracking-tight">Correct Info</h3>
-              </div>
-              <button onClick={() => setIsCorrecting(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all">
-                <X size={20} />
-              </button>
+      {/* Shadcn Sheet for Correction */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 border-none bg-white shadow-2xl">
+          <div className="h-full flex flex-col">
+            <div className="bg-[#004070] p-8 text-white">
+              <SheetHeader className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/10 rounded-xl">
+                    <Edit2 size={24} className="text-[#A3DAFF]" />
+                  </div>
+                  <SheetTitle className="text-2xl font-black text-white uppercase tracking-tight">Sửa Thông Tin</SheetTitle>
+                </div>
+                <SheetDescription className="text-white/60 font-medium">
+                  Cung cấp thông tin chính xác để AI học lại món ăn này.
+                </SheetDescription>
+              </SheetHeader>
             </div>
             
             <div className="flex-1 overflow-y-auto p-8 space-y-8">
-              <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200">
-                 <p className="text-xs font-bold text-orange-700 flex items-center gap-2">
-                    <Info size={14} /> NOTE
-                 </p>
-                 <p className="text-[11px] text-orange-600 mt-1 font-medium leading-relaxed">
-                    The corrected info will be remembered by AI for better future identification.
-                 </p>
+              {/* Option Tabs */}
+              <div className="flex p-1 bg-gray-100 rounded-2xl">
+                {[
+                  { id: 'text', label: 'Manual', icon: FileText },
+                  { id: 'link', label: 'Link', icon: LinkIcon },
+                  { id: 'ai', label: 'AI Gen', icon: RefreshCw },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setCorrectionMode(mode.id as any)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${
+                      correctionMode === mode.id 
+                      ? 'bg-white text-[#004070] shadow-sm' 
+                      : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <mode.icon size={14} />
+                    {mode.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Correct Food Name</label>
-                <div className="relative">
-                  <input
-                    type="text"
+              <div className="space-y-6">
+                <div className="space-y-2.5">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Tên món ăn đúng</label>
+                  <Input
                     value={correctedFoodName}
                     onChange={(e) => setCorrectedFoodName(e.target.value)}
-                    className="w-full bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl px-5 py-4 font-bold text-[#004070] focus:border-[#004070] focus:bg-white outline-none transition-all text-lg"
-                    placeholder="e.g., Beef Pho..."
+                    className="h-14 bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl px-5 font-bold text-[#004070] focus-visible:ring-0 focus-visible:border-[#004070] transition-all text-lg"
+                    placeholder="Ví dụ: Bánh Custas, Phở bò..."
                   />
-                  <Utensils className="absolute right-5 top-4.5 text-[#A3DAFF] opacity-30" size={24} />
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Re-describe Meal</label>
-                <textarea
-                  value={correctedDescription}
-                  onChange={(e) => setCorrectedDescription(e.target.value)}
-                  className="w-full bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl px-5 py-4 font-medium text-gray-600 focus:border-[#004070] focus:bg-white outline-none transition-all min-h-[220px] resize-none text-sm leading-relaxed"
-                  placeholder="Enter detailed ingredients, nutrients or cooking method..."
-                />
+                {correctionMode === 'link' && (
+                  <div className="space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Đường dẫn tham khảo (URL)</label>
+                    <div className="relative">
+                      <Input
+                        value={correctedLink}
+                        onChange={(e) => setCorrectedLink(e.target.value)}
+                        className="h-14 bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl pl-12 pr-5 font-medium text-[#004070] focus-visible:ring-0 focus-visible:border-[#004070] transition-all"
+                        placeholder="https://example.com/recipe"
+                      />
+                      <LinkIcon className="absolute left-4 top-4.5 text-[#A3DAFF]" size={20} />
+                    </div>
+                  </div>
+                )}
+
+                {(correctionMode === 'text' || correctionMode === 'link') && (
+                  <div className="space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                      {correctionMode === 'link' ? 'Ghi chú thêm' : 'Mô tả chi tiết món ăn'}
+                    </label>
+                    <Textarea
+                      value={correctedDescription}
+                      onChange={(e) => setCorrectedDescription(e.target.value)}
+                      className="min-h-[200px] bg-gray-50 border-2 border-[#A3DAFF]/20 rounded-2xl p-5 font-medium text-gray-600 focus-visible:ring-0 focus-visible:border-[#004070] transition-all resize-none leading-relaxed"
+                      placeholder={correctionMode === 'link' ? "Thông tin bổ sung từ link..." : "Nhập nguyên liệu, thành phần dinh dưỡng hoặc cách chế biến..."}
+                    />
+                  </div>
+                )}
+
+                {correctionMode === 'ai' && (
+                  <div className="bg-[#F0F9FF] p-6 rounded-[32px] border-2 border-[#A3DAFF]/20 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-3 text-[#004070]">
+                      <RefreshCw size={24} className="animate-spin-slow text-[#A3DAFF]" />
+                      <p className="font-bold text-sm">AI Phân Tích Lại</p>
+                    </div>
+                    <p className="text-xs text-[#004070]/70 leading-relaxed font-medium">
+                      Hệ thống sẽ sử dụng tên món ăn mới bạn vừa nhập để phân tích lại toàn bộ giá trị dinh dưỡng dựa trên hình ảnh đã chụp.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="p-6 bg-gray-50 border-t border-gray-100 grid grid-cols-2 gap-4">
+            <div className="p-8 bg-gray-50 border-t border-gray-100 flex gap-4">
               <Button 
                 variant="outline" 
-                onClick={() => setIsCorrecting(false)} 
-                className="rounded-2xl h-14 font-bold border-2 border-gray-200 text-gray-400 hover:bg-gray-100"
+                onClick={() => setIsSheetOpen(false)} 
+                className="flex-1 rounded-2xl h-14 font-bold border-2 border-gray-200 text-gray-400 hover:bg-gray-100"
               >
-                CANCEL
+                HỦY
               </Button>
               <Button 
                 onClick={handleCorrection} 
                 disabled={isUpdatingCorrection}
-                className="bg-[#004070] hover:bg-[#005596] text-white rounded-2xl h-14 font-black shadow-xl flex items-center justify-center gap-2"
+                className="flex-1 bg-[#004070] hover:bg-[#005596] text-white rounded-2xl h-14 font-black shadow-xl gap-2"
               >
                 {isUpdatingCorrection ? (
                   <Loader2 size={20} className="animate-spin" />
                 ) : (
                   <>
-                    <Save size={18} />
-                    UPDATE
+                    {correctionMode === 'ai' ? <RefreshCw size={18} /> : <Save size={18} />}
+                    {correctionMode === 'ai' ? 'PHÂN TÍCH LẠI' : 'CẬP NHẬT'}
                   </>
                 )}
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

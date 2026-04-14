@@ -76,54 +76,53 @@ Use these healthy options for your recommendations (suggestion field):
 # LOGIC & ANALYSIS STEPS
 1. **Meal Identification (PRIORITY)**: 
    - Identify exactly what the food/dish is. 
-   - **IMPORTANT**: Mention the food name first in your analysis.
-2. **Time-Based Classification**:
-   - Based on {current_time}, determine if the current meal is **Sáng (Breakfast)**, **Trưa (Lunch)**, **Phụ (Snack)**, or **Tối (Dinner)**.
-3. **Daily Planning**:
-   - Provide nutritional info (Calories, P, C, F) for the current meal.
-   - **Crucial**: For REMAINING meals, calculate the exact nutritional gaps (Calories, P, C, F) needed to reach the daily target.
-   - **Constraint**: In the "suggestion" field, provide ONLY 2-3 short dish names (e.g., "Phở gà, Trứng luộc"). NO long sentences.
+   - **Cultural context**: Identify if the dish is a regional specialty (đặc sản) of a specific Vietnamese province or region. Mention its key traditional ingredients.
+2. **Nutrition Insight**:
+   - Provide "nutritional_highlights": 2-3 short labels (e.g., "Giàu Protein", "Ít tinh bột", "Nhiều Omega-3").
+3. **Simplified Cooking**:
+   - In "cooking_instructions", provide a simplified recipe with ONLY 3-4 steps max. Keep steps concise.
+4. **Time-Based Classification**:
+   - Determine if the current meal is **Sáng**, **Trưa**, **Phụ**, or **Tối**.
 
 # EXPECTED OUTPUT FORMAT (JSON ONLY)
 Return STRICT VALID JSON matching this structure:
 {{
-  "identified_food": "Name of the dish",
+  "identified_food": "Tên món ăn",
   "current_meal_type": "Sáng/Trưa/Phụ/Tối",
-  "mode": "REST/LIGHT/MODERATE/HEAVY",
+  "nutritional_highlights": ["Nhãn 1", "Nhãn 2"],
   "daily_target": 2000,
   "status": "under/over/balanced",
-  "summary": "Short professional coaching summary",
+  "summary": "Mô tả ngắn gọn về món ăn, đặc sản vùng miền và lợi ích sức khỏe chính.",
   "timing_assessment": {{
     "is_suitable": true,
-    "reason": "Explain why this food is (not) suitable for the current time based on its nutrition"
+    "reason": "Giải thích tại sao món này phù hợp/không phù hợp vào thời điểm này"
   }},
   "cooking_instructions": {{
-    "prep_time": "15 mins",
-    "cook_time": "20 mins",
-    "difficulty": "Easy/Medium/Hard",
-    "ingredients": ["Ingredient 1", "Ingredient 2"],
+    "prep_time": "15 phút",
+    "cook_time": "20 phút",
+    "ingredients": ["Nguyên liệu chính 1", "Nguyên liệu chính 2"],
     "steps": [
-      "Step 1: description",
-      "Step 2: description"
+      "Bước 1: Sơ chế...",
+      "Bước 2: Nấu...",
+      "Bước 3: Hoàn thành..."
     ]
   }},
   "consumed": {{
     "Sáng": {{ "calories": 450, "protein": 25, "carbs": 60, "fat": 12, "suggestion": "Phở gà, Bánh mì ốp la" }},
     "Trưa": {{ "calories": 650, "protein": 35, "carbs": 85, "fat": 18, "suggestion": "Cơm gạo lứt, Ức gà" }},
-    "Phụ": {{ "calories": 150, "protein": 5, "carbs": 25, "fat": 5, "suggestion": "Sữa chua, Trái cây" }},
+    "Phụ": {{ "calories": 150, "protein": 5, "carbs": 25, "fat": 5, "suggestion": "Sữa yogurt, Trái cây" }},
     "Tối": {{ "calories": 500, "protein": 40, "carbs": 50, "fat": 15, "suggestion": "Cá hồi, Măng tây" }}
   }},
   "activity_recommendation": {{
-    "type": "Workout Type",
-    "intensity": "Low/Med/High",
-    "content": ["Exercise 1", "Exercise 2"],
-    "coach_advice": "Advice based on today's intake"
+    "type": "Tên bài tập",
+    "intensity": "Thấp/Trung bình/Cao",
+    "content": ["Động tác 1", "Động tác 2"],
+    "coach_advice": "Lời khuyên từ HLV"
   }}
 }}
 
 # NOTES
-- Recognize Vietnamese dishes specifically.
-- Return ONLY the JSON block.
-- All response text (summary, reason, coach_advice, suggestion, identified_food, dish_name, nutrition_overview, ingredients, steps, chef_tip) MUST be in Vietnamese.
-- For EVERY meal in the "consumed" object, provide nutritional targets (Calories, P, C, F) based on the user's daily goal, even if they haven't been consumed yet. This ensures the user has a complete daily plan at all times.
+- ALL text values in the JSON MUST be in Vietnamese.
+- Keep "steps" within 3-4 concise points.
+- Identify specialties of specific Vietnamese regions (e.g., Hà Tĩnh, Hà Nội, Huế).
 """
